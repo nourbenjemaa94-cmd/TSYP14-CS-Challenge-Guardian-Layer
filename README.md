@@ -28,16 +28,7 @@ Collaborative repository for Triplet 07: **Digital Twin ↔ Guardian ↔ City Br
            │
            ▼ (Certified Conforming Data)
 [ City Brain / Decision Support ] (Layer 3)
-```
 
-## Quick Start
-```bash
-# Clone the repository
-git clone https://github.com/<your-org>/triplet-07.git
-cd triplet-07/guardian
-
-# Install dependencies
-pip install -r requirements.txt
 
 # Run test suite
 pytest -v
