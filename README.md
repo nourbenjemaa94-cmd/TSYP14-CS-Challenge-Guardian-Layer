@@ -1,6 +1,10 @@
 
 # TSYP14-CS-Challenge-Guardian-Layer
 
+## Guardian Architecture
+<img width="1312" height="1199" alt="architecture" src="https://github.com/user-attachments/assets/e726dfcf-91a9-477a-b3c0-21413499dc19" />
+
+
 ## Project Structure
 
 ```text
