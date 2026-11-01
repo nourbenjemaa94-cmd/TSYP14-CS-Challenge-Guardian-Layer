@@ -1,3 +1,7 @@
+# TODO(security): ASSUMPTION — Guardian's signed routes from the interface
+# card are registered by guardian.adapters.communication.rest. This class
+# remains the generic /events receiver owned by the communications work.
+
 import httpx
 
 from fastapi import APIRouter, HTTPException, Request

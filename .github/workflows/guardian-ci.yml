@@ -1,0 +1,50 @@
+# No secrets. Tests use in-code keys.
+# TODO(security): ASSUMPTION — this workflow runs in the Guardian folder.
+# If it is placed at the triplet root, the step below enters guardian/ when
+# that directory contains requirements.txt. Path filters include both layouts.
+name: Guardian CI
+
+on:
+  push:
+    paths:
+      - "guardian/**"
+      - "src/**"
+      - "tests/**"
+      - "mocks/**"
+      - "adapters/**"
+      - "requirements.txt"
+      - "pytest.ini"
+      - "pyproject.toml"
+      - ".github/workflows/guardian-ci.yml"
+  pull_request:
+    paths:
+      - "guardian/**"
+      - "src/**"
+      - "tests/**"
+      - "mocks/**"
+      - "adapters/**"
+      - "requirements.txt"
+      - "pytest.ini"
+      - "pyproject.toml"
+      - ".github/workflows/guardian-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install, lint, and test
+        run: |
+          if [ -f guardian/requirements.txt ]; then
+            cd guardian
+          fi
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          ruff check src tests
+          pytest -q
