@@ -1,66 +1,16 @@
-# triplet-07 · Guardian Layer
+# Guardian core (`src/guardian/core/`)
 
-Guardian layer of **Triplet 07** (Digital Twin ↔ Guardian ↔ City Brain) for the TSYP14 "City Brain Convergence" challenge.
-The Guardian watches the same sensor stream as the City Brain and asks one question about every reading:
-**"Is this sensor telling the truth?"** It issues a trust verdict before the Brain acts, and contains confirmed problems
-(isolate a sensor, quarantine a device, roll back a falsified reading).
-
-## Team and responsibilities
-
-- **Member 1 (Mohamed Amine Hayouni)**: Communication & Contract Adapters (`adapters/`, `contracts/`)
-- **Member 2 (Nour Ben Jemaa)**: Contract Adapters & Security (`adapters/`, `security/`)
-- **Member 3 (Rayen Saidi)**: Core Engine & Audit Store (`core/`, `audit/`)
-- **Member 4 (Ghaith Mnasri)**: Core Security & Verification Engine (`core/`, `audit/`, `orchestration/`)
-- **Member 5 (Nour Zghonda)**: Security, Freshness & Replay Protection (`security/`)
-- **Member 6 (Sarra Mtir)**: Contracts & Ingestion Adapters (`contracts/`, `adapters/`)
-
-## Architecture
+The core answers one question for every reading: **"Is this sensor telling the truth?"**
+It never talks to a partner: transport lives in `adapters/`, message checks in `security/`, logging in `audit/`.
 
 ```
-[ Twin / sensors ]
-        |  REST / MQTT
-        v
- Communication adapter -> Security (auth, freshness, replay) -> Contract adapter (canonical model)
+canonical reading (dict)
         |
         v
- Guardian core:  history -> anomaly_detector -> trust_assessor -> containment
-        |
-        v
- Audit (logger, event store, live timeline)  ->  [ City Brain ]
+ anomaly_detector.py -- findings --> trust_assessor.py -- verdict --> containment.py
+        ^                                  |                               |
+        +------------ history.py <---------+-------------------------------+
 ```
-
-Detection, trust scoring and containment are separate modules. The core never talks to a partner: transport lives in
-`adapters/`, message checks in `security/`, logging in `audit/`, and `orchestration/pipeline.py` wires them together.
-
-## Repository layout
-
-```
-src/guardian/
-├── main.py
-├── config.py
-├── adapters/        communication/ (REST, MQTT)  contract/ (mapper, units)
-├── contracts/       events, verdicts, commands
-├── security/        authentication, authorization, validation, freshness, replay protection
-├── core/            history.py  anomaly_detector.py  trust_assessor.py  containment.py
-├── audit/           logger.py  event_store.py  timeline.py
-└── orchestration/   pipeline.py
-tests/               unit, integration, scenarios
-INTERFACE.md         interface card (messages and examples)
-Architecrute.md      full architecture tree
-config.example.yaml  configurable partner addresses and thresholds
-```
-
-## Run
-
-```bash
-pip install -r requirements.txt
-pytest -v
-uvicorn src.guardian.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-The core uses only the Python standard library, so it adds nothing to `requirements.txt`.
-
-## Core (`src/guardian/core/`)
 
 There is no `__init__.py` in `core/` (namespace package, as in the architecture tree). Import with
 `from guardian.core.history import HistoryTracker`, or `from core.history import ...` when `src/guardian` is on `sys.path` as in `main.py`.
@@ -72,7 +22,7 @@ There is no `__init__.py` in `core/` (namespace package, as in the architecture 
 | `trust_assessor.py` | Turns findings and device history into a verdict | `TrustAssessor.evaluate` / `assess` |
 | `containment.py` | Isolates, quarantines, rolls back, releases; reports what changed | `ContainmentEngine.contain` |
 
-### Quick use
+## Quick use
 
 ```python
 from guardian.core.history import HistoryTracker
@@ -96,7 +46,7 @@ report = containment.contain(verdict)
 The calls `pipeline.py` already makes still work: `detector.detect(msg, history)`, `assessor.assess(msg, flags)`,
 `containment.evaluate_action(flags, verdict)`. They do not execute containment; `contain()` does.
 
-### Canonical reading
+## Canonical reading
 
 | Field | Rule |
 |---|---|
@@ -108,7 +58,7 @@ The calls `pipeline.py` already makes still work: `detector.detect(msg, history)
 
 A malformed reading never raises in `analyze`: it becomes a hard finding such as `INVALID_SENSOR_ID`.
 
-### Detection
+## Detection
 
 | Check | Code | Severity |
 |---|---|---|
@@ -130,7 +80,7 @@ False-alarm handling:
 - The reference value is the last clean reading, so a spoofed value never becomes the baseline.
 - Rolled-back and flagged readings are excluded from the baseline.
 
-### Trust verdict
+## Trust verdict
 
 - Any hard finding gives `UNTRUSTED`.
 - Otherwise `score = 1 - sum(penalties)`: below 0.4 is `UNTRUSTED`, below 0.7 is `SUSPICIOUS`, else `TRUSTED`.
@@ -145,7 +95,7 @@ False-alarm handling:
  "evidence": [{"code": "SUDDEN_SPIKE_DETECTED", "severity": "hard", "detail": "40.0 -> 180.0 is 140.0/s, limit 15.0/s"}]}
 ```
 
-### Containment
+## Containment
 
 | Verdict | Reading action | Device state change (defaults) |
 |---|---|---|
@@ -169,7 +119,7 @@ class ContainmentPort(Protocol):
     def rollback_reading(self, event_id: str, idem_key: str) -> PortResult: ...
 ```
 
-### Configuration
+## Configuration
 
 Each config is a dataclass with `from_mapping()` for the YAML sections:
 
@@ -181,18 +131,18 @@ Each config is a dataclass with `from_mapping()` for the YAML sections:
 
 Unknown keys are ignored. Limits for metrics other than `water_level` are placeholders to tune by simulation.
 
-### Determinism and testing
+## Determinism and testing
 
 Detection and trust use only message timestamps, never the wall clock. `ContainmentEngine(clock=...)` takes a fake clock and
 `port=...` a mock Twin, so a scenario replays identically from one command.
 
-### Integration notes
+## Integration notes
 
 - Create one `HistoryTracker` in `main.py` and pass it to the detector, assessor and containment engine.
 - In `pipeline.py` use `assessor.evaluate(detection)` and call `containment.contain(verdict)` to execute containment.
 - Do not commit `__pycache__/`.
 
-### Known limitations
+## Known limitations
 
 - Correlation is one-directional: a high water level needs support, but a flood camera alone is not checked against water level.
 - Authentication, replay and freshness belong to `security/`; the core only adds a duplicate `event_id` check.
