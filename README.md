@@ -1,117 +1,141 @@
-# Guardian core (`src/guardian/core/`)
+# Core
 
-The core answers one question for every reading: **"Is this sensor telling the truth?"**
-It never talks to a partner: transport lives in `adapters/`, message checks in `security/`, logging in `audit/`.
+This folder is the brain of the Guardian. For every sensor reading it decides if the reading can be trusted,
+and if not, what to do about it. It does not receive messages and it does not send them: that is the job of
+`adapters/`, `security/` and `audit/`. The core only works on readings that were already checked and converted.
+
+## Files
+
+| File | What it does |
+|---|---|
+| `history.py` | Keeps the last readings of each sensor and the last verdicts of each device. Also checks that a reading is well formed. |
+| `anomaly_detector.py` | Looks at one reading and its history and lists the problems found. |
+| `trust_assessor.py` | Takes those problems and gives a verdict: `TRUSTED`, `SUSPICIOUS` or `UNTRUSTED`, with a reason and a confidence. |
+| `containment.py` | Applies the verdict: isolate a sensor, quarantine it, roll back a false reading, or release it later. |
+
+The order is always the same:
 
 ```
-canonical reading (dict)
-        |
-        v
- anomaly_detector.py -- findings --> trust_assessor.py -- verdict --> containment.py
-        ^                                  |                               |
-        +------------ history.py <---------+-------------------------------+
+reading -> anomaly_detector -> trust_assessor -> containment
+                 \________________ history ________________/
 ```
 
-There is no `__init__.py` in `core/` (namespace package, as in the architecture tree). Import with
-`from guardian.core.history import HistoryTracker`, or `from core.history import ...` when `src/guardian` is on `sys.path` as in `main.py`.
+The three classes share one `HistoryTracker`, so create it once and give it to each of them.
 
-| Module | Responsibility | Main entry points |
-|---|---|---|
-| `history.py` | Bounded per-sensor readings and per-device verdicts; reading validation | `HistoryTracker`, `Reading.from_message` |
-| `anomaly_detector.py` | Lists what is wrong with one reading | `AnomalyDetector.analyze` / `detect` |
-| `trust_assessor.py` | Turns findings and device history into a verdict | `TrustAssessor.evaluate` / `assess` |
-| `containment.py` | Isolates, quarantines, rolls back, releases; reports what changed | `ContainmentEngine.contain` |
-
-## Quick use
+## Example
 
 ```python
-from guardian.core.history import HistoryTracker
-from guardian.core.anomaly_detector import AnomalyDetector
-from guardian.core.trust_assessor import TrustAssessor
-from guardian.core.containment import ContainmentEngine
+from core.history import HistoryTracker
+from core.anomaly_detector import AnomalyDetector
+from core.trust_assessor import TrustAssessor
+from core.containment import ContainmentEngine
 
-history = HistoryTracker()                          # ONE shared instance
+history = HistoryTracker()
 detector = AnomalyDetector(history=history)
 assessor = TrustAssessor(history=history)
-containment = ContainmentEngine(history=history)    # port=... to call the Twin
+containment = ContainmentEngine(history=history)
 
-reading = {"event_id": "E1", "sensor_id": "S01", "metric": "water_level",
-           "value": 180, "unit": "cm", "timestamp": "2026-10-20T10:00:05Z"}
+reading = {
+    "event_id": "E1",
+    "sensor_id": "S01",
+    "metric": "water_level",
+    "value": 180,
+    "unit": "cm",
+    "timestamp": "2026-10-20T10:00:05Z",
+}
 
 detection = detector.analyze(reading)
 verdict = assessor.evaluate(detection)
 report = containment.contain(verdict)
+
+print(verdict.to_dict())
+print(report.to_dict())
 ```
 
-The calls `pipeline.py` already makes still work: `detector.detect(msg, history)`, `assessor.assess(msg, flags)`,
-`containment.evaluate_action(flags, verdict)`. They do not execute containment; `contain()` does.
+The old calls used by `pipeline.py` still work: `detector.detect(msg, history)`, `assessor.assess(msg, flags)`
+and `containment.evaluate_action(flags, verdict)`. They only give a decision. To really isolate or quarantine,
+call `containment.contain(verdict)`.
 
-## Canonical reading
+## Reading format
 
 | Field | Rule |
 |---|---|
-| `sensor_id`, `metric` | 1-64 chars of letters, digits, `_ . : -` |
-| `value` | finite number (not bool) |
-| `timestamp` | ISO 8601 (naive = UTC) |
-| `event_id` | optional, max 128 chars |
-| `unit` | optional, max 16 chars |
+| `sensor_id`, `metric` | 1 to 64 characters: letters, digits, `_`, `.`, `:`, `-` |
+| `value` | a normal number (not NaN, not a boolean) |
+| `timestamp` | ISO 8601 date, for example `2026-10-20T10:00:05Z` |
+| `event_id` | optional, 128 characters max |
+| `unit` | optional, 16 characters max |
 
-A malformed reading never raises in `analyze`: it becomes a hard finding such as `INVALID_SENSOR_ID`.
+A bad reading never crashes the detector. It is returned as a problem such as `INVALID_SENSOR_ID`.
 
-## Detection
+## What the detector looks for
 
-| Check | Code | Severity |
+| Problem | Code | Strength |
 |---|---|---|
-| Out of physical range | `PHYSICAL_BOUNDS_VIOLATION` | hard |
-| Unit differs from expected | `UNIT_MISMATCH` | hard |
-| Change faster than `hard_rate_factor` x limit | `SUDDEN_SPIKE_DETECTED` | hard |
-| Change faster than limit | `SUSPECTED_SPIKE` | soft |
-| N identical readings | `SENSOR_FROZEN_STAGNANT` | soft |
-| High reading not confirmed by correlated sensors | `PHYSICAL_INCOHERENCE` | soft |
-| Timestamp older than previous reading | `TIMESTAMP_REGRESSION` | soft |
-| Metric without configured limits | `UNKNOWN_METRIC` | soft |
-| Same `event_id` seen again | `DUPLICATE_EVENT` | soft |
-| Soft finding on N consecutive readings | `PERSISTENT_ANOMALY` | hard |
-| Invalid fields, sensor cap reached | `INVALID_*`, `MALFORMED_MESSAGE`, `MISSING_OR_INVALID_VALUE`, `TOO_MANY_SENSORS` | hard |
+| Value outside the possible range | `PHYSICAL_BOUNDS_VIOLATION` | hard |
+| Wrong unit (for example `m` instead of `cm`) | `UNIT_MISMATCH` | hard |
+| Value jumps very fast | `SUDDEN_SPIKE_DETECTED` | hard |
+| Value jumps fast | `SUSPECTED_SPIKE` | soft |
+| Same value many times in a row | `SENSOR_FROZEN_STAGNANT` | soft |
+| High water level that other sensors do not confirm | `PHYSICAL_INCOHERENCE` | soft |
+| Timestamp older than the previous reading | `TIMESTAMP_REGRESSION` | soft |
+| Metric with no configured limits | `UNKNOWN_METRIC` | soft |
+| Same `event_id` received twice | `DUPLICATE_EVENT` | soft |
+| A soft problem repeated several times | `PERSISTENT_ANOMALY` | hard |
+| Malformed reading | `MALFORMED_MESSAGE`, `INVALID_*`, `MISSING_OR_INVALID_VALUE`, `TOO_MANY_SENSORS` | hard |
 
-False-alarm handling:
-- Soft findings must persist on `persistence_readings` (default 3) consecutive readings before they escalate.
-- A jump confirmed by correlated sensors (flood camera or emergency calls within `window_sec`) is not flagged.
-- The reference value is the last clean reading, so a spoofed value never becomes the baseline.
-- Rolled-back and flagged readings are excluded from the baseline.
+A hard problem makes the reading `UNTRUSTED` immediately. A soft problem only counts as a warning.
 
-## Trust verdict
+To avoid false alarms:
+- a soft problem must happen 3 readings in a row (`persistence_readings`) before it becomes hard;
+- a fast rise is accepted if other sensors confirm it (flood camera or emergency calls);
+- each new reading is compared with the last clean one, so a fake value never becomes the normal value;
+- readings that were flagged or rolled back are not used as a reference.
 
-- Any hard finding gives `UNTRUSTED`.
-- Otherwise `score = 1 - sum(penalties)`: below 0.4 is `UNTRUSTED`, below 0.7 is `SUSPICIOUS`, else `TRUSTED`.
-- After a non-trusted verdict a device stays `SUSPICIOUS` (`DEVICE_RECOVERING`) until `recovery_clean_readings` clean verdicts.
-- `confidence` is a heuristic strength of evidence in [0, 1], not a calibrated probability.
+## Verdict
+
+- A hard problem gives `UNTRUSTED`.
+- Otherwise every problem removes points from a score that starts at 1. Under 0.4 is `UNTRUSTED`, under 0.7 is `SUSPICIOUS`, otherwise `TRUSTED`.
+- After a bad verdict the sensor stays `SUSPICIOUS` until it sends 3 clean readings in a row.
+- `confidence` goes from 0 to 1. It shows how strong the evidence is, it is not an exact probability.
+
+Example of `verdict.to_dict()`:
 
 ```json
-{"event_id": "E1", "sensor_id": "S01", "verdict": "UNTRUSTED", "confidence": 0.8,
- "reason_code": "SUDDEN_SPIKE_DETECTED", "reason": "ANOMALY_DETECTED", "score": 0.2,
- "assessment_id": "assess-000006", "policy_version": "1.0",
- "timestamp": "2026-10-20T10:00:05+00:00",
- "evidence": [{"code": "SUDDEN_SPIKE_DETECTED", "severity": "hard", "detail": "40.0 -> 180.0 is 140.0/s, limit 15.0/s"}]}
+{
+  "event_id": "E1",
+  "sensor_id": "S01",
+  "verdict": "UNTRUSTED",
+  "confidence": 0.8,
+  "reason_code": "SUDDEN_SPIKE_DETECTED",
+  "reason": "ANOMALY_DETECTED",
+  "score": 0.2,
+  "assessment_id": "assess-000006",
+  "policy_version": "1.0",
+  "timestamp": "2026-10-20T10:00:05+00:00",
+  "evidence": [
+    {"code": "SUDDEN_SPIKE_DETECTED", "severity": "hard", "detail": "40.0 -> 180.0 is 140.0/s, limit 15.0/s"}
+  ]
+}
 ```
 
 ## Containment
 
-| Verdict | Reading action | Device state change (defaults) |
+| Verdict | What happens to the reading | What happens to the sensor |
 |---|---|---|
-| `TRUSTED` | `ALLOW` | quarantine lifted after 5 clean verdicts |
-| `SUSPICIOUS` | `QUARANTINE` | quarantined after 2 consecutive |
-| `UNTRUSTED` | `ISOLATE` | isolated at once, reading rolled back |
+| `TRUSTED` | `ALLOW` | a quarantine is lifted after 5 clean readings |
+| `SUSPICIOUS` | `QUARANTINE` | quarantined after 2 suspicious readings in a row |
+| `UNTRUSTED` | `ISOLATE` | isolated right away, and the false reading is rolled back |
 
-- Device states: `ACTIVE`, `QUARANTINED`, `ISOLATED`. Isolation is lifted only by `release()`.
-- Action lifecycle: `REQUESTED -> ACCEPTED -> APPLIED`, or `FAILED`. `remote_confirmed` is true only after the Twin confirmed.
-- If the Twin rejects an isolation, the device stays blocked locally and the next `UNTRUSTED` verdict retries.
-- Rollback flags the reading; the original value stays in history. `restore_reading()` reverses it (local only).
-- Malformed or duplicate messages never change a device state, so garbage sent in a device's name cannot isolate it.
-- `contain()` is idempotent per `assessment_id`; every action carries an idempotency key.
-- Quarantine and release are Guardian-local (the Twin tool catalogue has no such tools).
+- A sensor is `ACTIVE`, `QUARANTINED` or `ISOLATED`. An isolated sensor stays isolated until `release()` is called.
+- Every action returns what it changed, with a status: `APPLIED`, `ACCEPTED` (not confirmed yet), `FAILED` or `NOOP`.
+- If the Twin refuses an isolation, the sensor is still blocked on our side and we try again on the next bad reading.
+- A rollback does not delete anything. The reading is only marked, and `restore_reading()` can undo it.
+- A malformed or duplicate message never isolates a sensor, so nobody can isolate a sensor by sending garbage with its name.
+- Calling `contain()` twice with the same verdict does the work only once.
+- Quarantine and release are done inside the Guardian only, because the Twin has no tool for them.
 
-Twin calls go through a port supplied by `adapters/`:
+The calls to the Twin go through a port that `adapters/` provides:
 
 ```python
 class ContainmentPort(Protocol):
@@ -119,31 +143,32 @@ class ContainmentPort(Protocol):
     def rollback_reading(self, event_id: str, idem_key: str) -> PortResult: ...
 ```
 
+Without a port, everything is done locally and `remote_confirmed` stays `False`.
+
 ## Configuration
 
-Each config is a dataclass with `from_mapping()` for the YAML sections:
+Nothing is fixed in the code. Each part has a config class with a `from_mapping()` method that reads a section of the yaml file.
 
-| Class | Section | Main keys |
+| Class | yaml section | Main keys |
 |---|---|---|
-| `DetectorConfig` | `detection:` | `persistence_readings`, `hard_rate_factor`, per-metric `min_value`, `max_value`, `max_rate_per_sec`, `stuck_count`, `unit` |
+| `DetectorConfig` | `detection:` | `persistence_readings`, `hard_rate_factor`, and for each metric `min_value`, `max_value`, `max_rate_per_sec`, `stuck_count`, `unit` |
 | `TrustConfig` | `trust:` | `isolate_threshold`, `quarantine_threshold`, `recovery_clean_readings` |
 | `ContainmentConfig` | `containment:` | `isolate_after_untrusted`, `quarantine_after_suspicious`, `release_quarantine_after_trusted`, `rollback_untrusted_readings` |
 
-Unknown keys are ignored. Limits for metrics other than `water_level` are placeholders to tune by simulation.
+Unknown keys are ignored. Only `water_level` has real limits for now; the other metrics use default values to tune later with the simulation.
 
-## Determinism and testing
+## Testing
 
-Detection and trust use only message timestamps, never the wall clock. `ContainmentEngine(clock=...)` takes a fake clock and
-`port=...` a mock Twin, so a scenario replays identically from one command.
+The detector and the assessor only use the timestamps of the readings, never the real clock, so the same input always gives the same result.
+`ContainmentEngine(clock=...)` accepts a fake clock and `port=...` accepts a fake Twin.
 
-## Integration notes
+## To connect in the pipeline
 
-- Create one `HistoryTracker` in `main.py` and pass it to the detector, assessor and containment engine.
-- In `pipeline.py` use `assessor.evaluate(detection)` and call `containment.contain(verdict)` to execute containment.
-- Do not commit `__pycache__/`.
+- create one `HistoryTracker` in `main.py` and give it to the three classes;
+- in `pipeline.py`, use `assessor.evaluate(detection)` and then `containment.contain(verdict)`.
 
-## Known limitations
+## Limits
 
-- Correlation is one-directional: a high water level needs support, but a flood camera alone is not checked against water level.
-- Authentication, replay and freshness belong to `security/`; the core only adds a duplicate `event_id` check.
-- State is in memory: a restart clears history and device states.
+- The water level is checked against the other sensors, but not the other way around.
+- Login, freshness and replay checks are done in `security/`. The core only rejects a repeated `event_id`.
+- Everything is kept in memory, so a restart clears the history and the sensor states.
