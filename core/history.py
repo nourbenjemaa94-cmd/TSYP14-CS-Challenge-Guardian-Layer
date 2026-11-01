@@ -15,8 +15,6 @@ _ID_RE = re.compile(r"[A-Za-z0-9_.:\-]{1,64}")
 
 
 class ReadingError(ValueError):
-    """A reading is malformed. `code` is a stable machine-readable error code."""
-
     def __init__(self, code: str, message: str) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
@@ -24,12 +22,10 @@ class ReadingError(ValueError):
 
 
 def utc_now_iso() -> str:
-    """Current UTC time, ISO 8601. Only used for stamping actions, never for detection."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def parse_timestamp(value: Any) -> datetime:
-    """Parse an ISO 8601 string or datetime into an aware UTC datetime (naive = UTC)."""
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, str) and value.strip():
@@ -49,8 +45,6 @@ def parse_timestamp(value: Any) -> datetime:
 
 @dataclass(frozen=True)
 class Reading:
-    """A validated canonical reading."""
-
     event_id: str
     sensor_id: str
     metric: str
@@ -60,7 +54,6 @@ class Reading:
 
     @classmethod
     def from_message(cls, msg: Any) -> "Reading":
-        """Validate a canonical message. Raises ReadingError with a clear code."""
         if not isinstance(msg, Mapping):
             raise ReadingError("MALFORMED_MESSAGE", "reading must be a JSON object")
         sensor_id = msg.get("sensor_id")
@@ -84,23 +77,18 @@ class Reading:
 
 @dataclass
 class HistoryEntry:
-    """A stored reading plus what the Guardian concluded about it."""
-
     reading: Reading
-    codes: Tuple[str, ...] = ()  # anomaly codes raised for this reading
+    codes: Tuple[str, ...] = ()
     verdict: Optional[str] = None
     rolled_back: bool = False
 
     @property
     def clean(self) -> bool:
-        """Eligible for baselines and reference values (no anomaly, not rolled back)."""
         return not self.codes and not self.rolled_back
 
 
 @dataclass(frozen=True)
 class VerdictRecord:
-    """One trust verdict, kept per device."""
-
     event_id: str
     sensor_id: str
     verdict: str
@@ -110,8 +98,6 @@ class VerdictRecord:
 
 
 class HistoryTracker:
-    """Rolling per-sensor readings and per-device verdicts, with fixed memory bounds."""
-
     def __init__(self, window_size: int = 20, verdict_window: int = 20, max_sensors: int = 1000) -> None:
         if window_size < 2 or verdict_window < 1 or max_sensors < 1:
             raise ValueError("window_size must be >= 2, verdict_window >= 1, max_sensors >= 1")
@@ -121,9 +107,7 @@ class HistoryTracker:
         self._readings: Dict[str, Deque[HistoryEntry]] = {}
         self._verdicts: Dict[str, Deque[VerdictRecord]] = {}
 
-    # ---------------------------------------------------------------- readings
     def record(self, reading: Reading, codes: Tuple[str, ...] = ()) -> HistoryEntry:
-        """Store a reading. Raises ReadingError(TOO_MANY_SENSORS) for a new sensor over the cap."""
         window = self._readings.get(reading.sensor_id)
         if window is None:
             if len(self._readings) >= self.max_sensors:
@@ -134,14 +118,12 @@ class HistoryTracker:
         return entry
 
     def entries(self, sensor_id: str) -> List[HistoryEntry]:
-        """Stored entries of a sensor, oldest first (copy)."""
         return list(self._readings.get(sensor_id, ()))
 
     def sensors(self) -> List[str]:
         return sorted(self._readings)
 
     def find_entry(self, event_id: str) -> Optional[HistoryEntry]:
-        """Entry with this event_id, or None (empty ids never match)."""
         if not event_id:
             return None
         for window in self._readings.values():
@@ -154,20 +136,17 @@ class HistoryTracker:
         return self.find_entry(event_id) is not None
 
     def reference(self, sensor_id: str) -> Optional[HistoryEntry]:
-        """Most recent clean entry: the value new readings are compared against."""
         for entry in reversed(self._readings.get(sensor_id, ())):
             if entry.clean:
                 return entry
         return None
 
     def last_values(self, sensor_id: str, count: int) -> List[float]:
-        """Values of the last `count` entries (any status), oldest first."""
         if count <= 0:
             return []
         return [e.reading.value for e in list(self._readings.get(sensor_id, ()))[-count:]]
 
     def soft_streak(self, sensor_id: str, code: str) -> int:
-        """How many of the most recent consecutive entries carry `code`."""
         streak = 0
         for entry in reversed(self._readings.get(sensor_id, ())):
             if code not in entry.codes:
@@ -176,7 +155,6 @@ class HistoryTracker:
         return streak
 
     def recent(self, metric: str, not_before: datetime, not_after: datetime, exclude_sensor: str) -> List[Reading]:
-        """Latest clean reading of `metric` per other sensor, inside the time window."""
         found: List[Reading] = []
         for sensor_id, window in self._readings.items():
             if sensor_id == exclude_sensor:
@@ -190,21 +168,17 @@ class HistoryTracker:
         return found
 
     def mark_rolled_back(self, event_id: str, flag: bool = True) -> Optional[HistoryEntry]:
-        """Set/clear the rollback flag. The original reading is kept untouched."""
         entry = self.find_entry(event_id)
         if entry is not None:
             entry.rolled_back = flag
         return entry
 
     def reset(self, sensor_id: str) -> int:
-        """Controlled baseline reset (e.g. after a device is released). Returns entries dropped."""
         dropped = len(self._readings.pop(sensor_id, ()))
         self._verdicts.pop(sensor_id, None)
         return dropped
 
-    # ---------------------------------------------------------------- verdicts
     def record_verdict(self, record: VerdictRecord) -> bool:
-        """Store a verdict for a device and tag its reading. False if the device cap is hit."""
         window = self._verdicts.get(record.sensor_id)
         if window is None:
             if len(self._verdicts) >= self.max_sensors:
@@ -217,12 +191,9 @@ class HistoryTracker:
         return True
 
     def verdicts(self, sensor_id: str, count: Optional[int] = None) -> List[VerdictRecord]:
-        """Verdicts of a device, oldest first; `count` keeps only the newest ones."""
         items = list(self._verdicts.get(sensor_id, ()))
         return items if count is None else items[-count:] if count > 0 else []
 
-    # ------------------------------------------- legacy helpers on plain lists
-    # Kept because earlier code calls them with a list of reading dicts.
     def calculate_mean(self, history: List[Dict[str, Any]]) -> Optional[float]:
         values = [r.get("value") for r in history if isinstance(r.get("value"), (int, float))]
         return sum(values) / len(values) if values else None

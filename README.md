@@ -22,6 +22,8 @@ reading -> anomaly_detector -> trust_assessor -> containment
 
 The three classes share one `HistoryTracker`, so create it once and give it to each of them.
 
+Imports use the `core.` prefix (`from core.history import ...`), so run the code from the folder that contains `core/`, or add that folder to `sys.path` like `main.py` does.
+
 ## Example
 
 ```python

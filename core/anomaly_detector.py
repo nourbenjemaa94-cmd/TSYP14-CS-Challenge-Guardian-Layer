@@ -4,12 +4,11 @@ from dataclasses import dataclass, field, fields, replace
 from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from .history import HistoryTracker, Reading, ReadingError
+from core.history import HistoryTracker, Reading, ReadingError
 
 HARD = "hard"
 SOFT = "soft"
 
-# Hard = enough alone to make a reading UNTRUSTED. Anything else is soft.
 SEVERITY: Dict[str, str] = {
     "SUDDEN_SPIKE_DETECTED": HARD,
     "PHYSICAL_BOUNDS_VIOLATION": HARD,
@@ -31,8 +30,6 @@ SEVERITY: Dict[str, str] = {
     "DUPLICATE_EVENT": SOFT,
 }
 
-# Codes that say nothing about the device itself (bad message / replay): they are
-# reported but never count as evidence against the device.
 MESSAGE_ONLY_CODES = frozenset({
     "MALFORMED_MESSAGE", "INVALID_SENSOR_ID", "INVALID_METRIC", "INVALID_TIMESTAMP",
     "INVALID_EVENT_ID", "INVALID_UNIT", "MISSING_OR_INVALID_VALUE", "TOO_MANY_SENSORS",
@@ -41,7 +38,6 @@ MESSAGE_ONLY_CODES = frozenset({
 
 
 def severity_of(code: str) -> str:
-    """Unknown codes (from older callers) count as soft."""
     return SEVERITY.get(code, SOFT)
 
 
@@ -60,14 +56,12 @@ class Finding:
 
 @dataclass(frozen=True)
 class DetectionResult:
-    """Everything the detector concluded about one reading (log-friendly via to_dict)."""
-
     event_id: str
     sensor_id: str
     metric: str
     timestamp: str
     findings: Tuple[Finding, ...] = ()
-    recorded: bool = False  # True when the reading was valid and stored as evidence about the device
+    recorded: bool = False
 
     @property
     def codes(self) -> List[str]:
@@ -83,7 +77,6 @@ class DetectionResult:
 
     @property
     def primary_code(self) -> Optional[str]:
-        """First hard finding, else first finding, else None."""
         for finding in self.findings:
             if finding.severity == HARD:
                 return finding.code
@@ -98,7 +91,6 @@ class DetectionResult:
 
     @classmethod
     def from_codes(cls, msg: Any, codes: List[str]) -> "DetectionResult":
-        """Rebuild a result from the plain code list (used by TrustAssessor.assess)."""
         data = msg if isinstance(msg, Mapping) else {}
         return cls(
             event_id=str(data.get("event_id") or ""),
@@ -112,15 +104,13 @@ class DetectionResult:
 
 @dataclass(frozen=True)
 class MetricLimits:
-    """Plausibility limits for one metric, in canonical units. None disables a check."""
-
     min_value: Optional[float] = None
     max_value: Optional[float] = None
-    max_rate_per_sec: Optional[float] = None  # largest believable change per second
-    min_dt_sec: float = 1.0                   # floor for the time gap, avoids divide-by-tiny
-    stuck_count: int = 0                      # identical readings in a row = frozen; 0 disables
+    max_rate_per_sec: Optional[float] = None
+    min_dt_sec: float = 1.0
+    stuck_count: int = 0
     stuck_tolerance: float = 0.0
-    unit: str = ""                            # expected unit; "" = not checked
+    unit: str = ""
 
     def __post_init__(self) -> None:
         if self.min_dt_sec <= 0 or self.stuck_count < 0 or self.stuck_count == 1:
@@ -131,8 +121,6 @@ class MetricLimits:
 
 @dataclass(frozen=True)
 class CorrelationRule:
-    """A reading of `metric` at/above `trigger_above` needs support from other sensors."""
-
     metric: str = "water_level"
     trigger_above: float = 150.0
     supporters: Tuple[Tuple[str, float], ...] = (("camera_flood_score", 0.5), ("emergency_calls", 1.0))
@@ -141,7 +129,6 @@ class CorrelationRule:
 
 
 def default_metrics() -> Dict[str, MetricLimits]:
-    # TUNE: only water_level (cm) comes from config.example.yaml; the rest are placeholders.
     return {
         "water_level": MetricLimits(0.0, 1000.0, 15.0, 1.0, 10, 0.0, "cm"),
         "traffic_density": MetricLimits(0.0, 500.0, 50.0, 1.0, 10),
@@ -152,7 +139,6 @@ def default_metrics() -> Dict[str, MetricLimits]:
     }
 
 
-# config.example.yaml key -> MetricLimits field
 _ALIASES = {
     "max_physical_limit_cm": "max_value",
     "min_physical_limit_cm": "min_value",
@@ -162,8 +148,8 @@ _ALIASES = {
 
 @dataclass(frozen=True)
 class DetectorConfig:
-    persistence_readings: int = 3   # soft finding on N consecutive readings -> PERSISTENT_ANOMALY
-    hard_rate_factor: float = 3.0   # jump faster than factor * max_rate -> hard, else soft
+    persistence_readings: int = 3
+    hard_rate_factor: float = 3.0
     metrics: Mapping[str, MetricLimits] = field(default_factory=default_metrics)
     correlations: Tuple[CorrelationRule, ...] = (CorrelationRule(),)
 
@@ -173,7 +159,6 @@ class DetectorConfig:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "DetectorConfig":
-        """Build from the `detection:` section of config.yaml. Unknown keys are ignored."""
         base = cls()
         kwargs: Dict[str, Any] = {}
         for key in ("persistence_readings", "hard_rate_factor"):
@@ -197,14 +182,12 @@ class DetectorConfig:
 
 
 class AnomalyDetector:
-    """Stateless apart from the shared HistoryTracker; same inputs give same findings."""
-
     def __init__(
         self,
         config: Optional[DetectorConfig] = None,
         history: Optional[HistoryTracker] = None,
         *,
-        water_spike_threshold_cm: Optional[float] = None,  # legacy kwarg (main.py)
+        water_spike_threshold_cm: Optional[float] = None,
         min_water_level_cm: Optional[float] = None,
         max_water_level_cm: Optional[float] = None,
     ) -> None:
@@ -226,13 +209,10 @@ class AnomalyDetector:
         self.config = cfg
         self.history = history if history is not None else HistoryTracker()
 
-    # ------------------------------------------------------------------ public
     def detect(self, canonical_msg: Dict[str, Any], history: Optional[List[Dict[str, Any]]] = None) -> List[str]:
-        """Pipeline-compatible call: returns anomaly codes ([] = nothing found)."""
         return self.analyze(canonical_msg).codes
 
     def analyze(self, canonical_msg: Any) -> DetectionResult:
-        """Full result for one reading. Never raises on bad data."""
         try:
             reading = Reading.from_message(canonical_msg)
         except ReadingError as exc:
@@ -260,7 +240,6 @@ class AnomalyDetector:
             recorded = False
         return self._result(reading, findings, recorded)
 
-    # ----------------------------------------------------------------- checks
     def _check_limits(self, reading: Reading, limits: MetricLimits, corroboration: Optional[bool]) -> List[Finding]:
         value = reading.value
         if limits.unit and reading.unit and reading.unit != limits.unit:
@@ -273,8 +252,6 @@ class AnomalyDetector:
         findings: List[Finding] = []
         reference = self.history.reference(reading.sensor_id)
         if reference is not None and limits.max_rate_per_sec is not None:
-            # Time gap is to the previous reading (not the reference): a stale reference
-            # must not shrink the rate and let a persistent spoof fade out.
             previous = self.history.entries(reading.sensor_id)[-1]
             gap = (reading.ts - previous.reading.ts).total_seconds()
             if gap < 0:
@@ -292,7 +269,6 @@ class AnomalyDetector:
         return findings
 
     def _corroboration(self, reading: Reading) -> Optional[bool]:
-        """True = confirmed by other sensors, False = contradicted, None = no rule / no data."""
         verdict: Optional[bool] = None
         for rule in self.config.correlations:
             if rule.metric != reading.metric or reading.value < rule.trigger_above:
@@ -314,7 +290,6 @@ class AnomalyDetector:
         return verdict
 
     def _persistence(self, reading: Reading, findings: List[Finding]) -> List[Finding]:
-        """Add one PERSISTENT_ANOMALY when a soft finding repeats on N consecutive readings."""
         for finding in findings:
             if finding.severity != SOFT:
                 continue
@@ -323,7 +298,6 @@ class AnomalyDetector:
                 return [Finding("PERSISTENT_ANOMALY", f"{finding.code} on {streak} consecutive readings")]
         return []
 
-    # ---------------------------------------------------------------- helpers
     @staticmethod
     def _result(reading: Reading, findings: List[Finding], recorded: bool) -> DetectionResult:
         return DetectionResult(reading.event_id, reading.sensor_id, reading.metric,

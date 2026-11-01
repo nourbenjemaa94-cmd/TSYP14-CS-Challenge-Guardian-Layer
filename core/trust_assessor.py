@@ -3,10 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from .anomaly_detector import DetectionResult, Finding, HARD
-from .history import SUSPICIOUS, TRUSTED, UNTRUSTED, HistoryTracker, VerdictRecord
+from core.anomaly_detector import DetectionResult, Finding, HARD
+from core.history import SUSPICIOUS, TRUSTED, UNTRUSTED, HistoryTracker, VerdictRecord
 
-# Legacy coarse reasons the pipeline and INTERFACE.md already use.
 _LEGACY_REASON = {TRUSTED: "NORMAL", SUSPICIOUS: "DEGRADED_CONFIDENCE", UNTRUSTED: "ANOMALY_DETECTED"}
 
 
@@ -24,10 +23,10 @@ class TrustConfig:
     untrusted_below: float = 0.4
     suspicious_below: float = 0.7
     penalties: Mapping[str, float] = field(default_factory=_default_penalties)
-    hard_default_penalty: float = 0.8   # hard code missing from `penalties`
-    soft_default_penalty: float = 0.5   # soft code missing from `penalties`
+    hard_default_penalty: float = 0.8
+    soft_default_penalty: float = 0.5
     recovery_clean_readings: int = 3
-    full_confidence_readings: int = 10  # history depth at which a TRUSTED verdict is fully confident
+    full_confidence_readings: int = 10
     policy_version: str = "1.0"
 
     def __post_init__(self) -> None:
@@ -38,7 +37,6 @@ class TrustConfig:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "TrustConfig":
-        """Build from the `trust:` section of config.yaml. Unknown keys are ignored."""
         base = cls()
         values: Dict[str, Any] = {}
         for src, dst in (("isolate_threshold", "untrusted_below"), ("quarantine_threshold", "suspicious_below")):
@@ -54,20 +52,18 @@ class TrustConfig:
 
 @dataclass(frozen=True)
 class TrustVerdict:
-    """Explicit verdict for one reading. to_dict() is JSON-ready for logs and the Brain."""
-
     event_id: str
     sensor_id: str
     verdict: str
     confidence: float
-    reason_code: str          # specific cause, e.g. SUDDEN_SPIKE_DETECTED, NORMAL
-    reason: str               # legacy coarse reason: NORMAL / DEGRADED_CONFIDENCE / ANOMALY_DETECTED
+    reason_code: str
+    reason: str
     score: float
     assessment_id: str
     policy_version: str
-    timestamp: str            # reading time (deterministic); the audit layer adds wall-clock time
+    timestamp: str
     evidence: Tuple[Dict[str, str], ...] = ()
-    recorded: bool = False    # True when the reading counts as evidence about the device
+    recorded: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -80,14 +76,12 @@ class TrustVerdict:
 
 
 class TrustAssessor:
-    """Combines findings and history into verdicts. One instance per Guardian."""
-
     def __init__(
         self,
         config: Optional[TrustConfig] = None,
         history: Optional[HistoryTracker] = None,
         *,
-        untrusted_penalty: Optional[float] = None,  # legacy kwarg: penalty for hard codes
+        untrusted_penalty: Optional[float] = None,
     ) -> None:
         cfg = config or TrustConfig()
         if untrusted_penalty is not None:
@@ -96,14 +90,11 @@ class TrustAssessor:
         self.history = history if history is not None else HistoryTracker()
         self._sequence = 0
 
-    # ------------------------------------------------------------------ public
     def assess(self, canonical_msg: Dict[str, Any], flags: List[str]) -> Tuple[str, str]:
-        """Pipeline-compatible call: returns (verdict, legacy_reason)."""
         verdict = self.evaluate(DetectionResult.from_codes(canonical_msg, list(flags)))
         return verdict.verdict, verdict.reason
 
     def evaluate(self, detection: DetectionResult) -> TrustVerdict:
-        """Verdict for one detection result; stores it in the device history."""
         cfg = self.config
         score = round(max(0.0, 1.0 - sum(self._penalty(f) for f in detection.findings)), 3)
         reason_code = detection.primary_code or "NORMAL"
@@ -132,7 +123,6 @@ class TrustAssessor:
         return result
 
     def device_trust(self, sensor_id: str) -> Tuple[str, str]:
-        """Current (verdict, reason_code) for a device, from its verdict history."""
         recent = self.history.verdicts(sensor_id)
         if not recent:
             return SUSPICIOUS, "NO_HISTORY"
@@ -142,7 +132,6 @@ class TrustAssessor:
             return SUSPICIOUS, "DEVICE_RECOVERING"
         return TRUSTED, "NORMAL"
 
-    # ----------------------------------------------------------------- helpers
     def _penalty(self, finding: Finding) -> float:
         default = self.config.hard_default_penalty if finding.severity == HARD else self.config.soft_default_penalty
         return self.config.penalties.get(finding.code, default)
