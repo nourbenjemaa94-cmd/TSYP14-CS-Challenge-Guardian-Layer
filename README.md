@@ -134,11 +134,11 @@ triplet-07/
 
 ### 4. Core
 
-- [ ] Core
-  - [ ] history
-  - [ ] anomaly_detector
-  - [ ] trust_assessor
-  - [ ] containment
+- [x] Core
+  - [x] history
+  - [x] anomaly_detector
+  - [x] trust_assessor
+  - [x] containment
   - [ ] Test unitaire
 
 ### 5. Audit
