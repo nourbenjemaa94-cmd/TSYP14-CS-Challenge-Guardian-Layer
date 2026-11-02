@@ -1,0 +1,7 @@
+scenario=flood
+started_at=2026-11-08T12:00:00.000Z
+expected=RATE_LIMITED
+actual=RATE_LIMITED
+http_status=429
+event_id=evt-flood-29
+match=true

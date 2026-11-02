@@ -1,0 +1,7 @@
+scenario=future
+started_at=2026-11-08T12:00:00.000Z
+expected=FUTURE_TIMESTAMP
+actual=FUTURE_TIMESTAMP
+http_status=422
+event_id=evt-future
+match=true
