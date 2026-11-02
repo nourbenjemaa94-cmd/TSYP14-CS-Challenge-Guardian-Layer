@@ -1,0 +1,7 @@
+scenario=unknown-layer
+started_at=2026-11-08T12:00:00.000Z
+expected=UNKNOWN_SENDER
+actual=UNKNOWN_SENDER
+http_status=401
+event_id=evt-unknown-layer
+match=true

@@ -1,0 +1,7 @@
+scenario=wrong-key
+started_at=2026-11-08T12:00:00.000Z
+expected=SIGNATURE_INVALID
+actual=SIGNATURE_INVALID
+http_status=401
+event_id=evt-wrong-key
+match=true
