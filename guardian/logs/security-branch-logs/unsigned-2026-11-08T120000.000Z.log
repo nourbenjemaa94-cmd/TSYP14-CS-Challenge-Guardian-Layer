@@ -1,0 +1,7 @@
+scenario=unsigned
+started_at=2026-11-08T12:00:00.000Z
+expected=SIGNATURE_MISSING
+actual=SIGNATURE_MISSING
+http_status=401
+event_id=evt-unsigned
+match=true
