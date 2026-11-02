@@ -1,0 +1,54 @@
+# Guardian Configuration Specification (R1: Configurable Partner Endpoints)
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  cors_origins: ["*"]
+
+partners:
+  twin:
+    type: "rest"
+    listen_path: "/api/v1/telemetry"
+    mqtt:
+      broker: "localhost"
+      port: 1883
+      topic: "sensors/telemetry/raw"
+  brain:
+    type: "rest"
+    endpoint: "http://localhost:8002/api/v1/brain/ingest"
+    timeout_seconds: 5.0
+    retry_count: 3
+
+security:
+  enabled: true
+  token_header: "Authorization"
+  valid_tokens:
+    - "valid_token"
+    - "triplet07-supersecret-token"
+  freshness_window_seconds: 300
+  replay_cache_size: 10000
+
+detection:
+  water_level:
+    spike_threshold_cm: 200.0
+    max_physical_limit_cm: 1000.0
+    min_physical_limit_cm: 0.0
+    max_rate_of_change_cm_per_sec: 15.0
+  traffic:
+    max_speed_kmh: 250.0
+    max_density_vpm: 500.0
+
+trust:
+  initial_score: 1.0
+  penalty_spike: 0.8
+  penalty_physical_violation: 0.9
+  penalty_untrusted_history: 0.3
+  isolate_threshold: 0.4
+  quarantine_threshold: 0.7
+
+audit:
+  timeline_channel: "/ws/timeline"
+  log_directory: "../logs"
+  sqlite_path: "event_store.db"
+
