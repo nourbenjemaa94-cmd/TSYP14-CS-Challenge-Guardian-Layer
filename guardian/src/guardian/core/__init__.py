@@ -1,10 +1,4 @@
-"""
-Core Guardian Security & Sanity Subsystem.
-
-The active implementation is the core work restored from the preserved
-``src/core`` worktree files. The prototype implementation remains available
-under ``core_prototype`` for traceability.
-"""
+"""Guardian's active core security and sanity subsystem."""
 
 from .history import HistoryTracker
 from .anomaly_detector import AnomalyDetector
