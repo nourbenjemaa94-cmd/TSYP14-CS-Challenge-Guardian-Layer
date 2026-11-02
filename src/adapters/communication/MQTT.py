@@ -1,3 +1,7 @@
+# TODO(security): ASSUMPTION — signed MQTT topics are delivered by
+# guardian.adapters.communication.mqtt.MqttIngress. This class remains the
+# generic subscriber owned by the communications work.
+
 import logging
 from typing import Any
 
