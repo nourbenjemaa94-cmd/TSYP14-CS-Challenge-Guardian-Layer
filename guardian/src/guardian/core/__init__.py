@@ -1,10 +1,9 @@
 """
-Core Guardian Security & Sanity Subsystem (Member 3 & 4: Ghaith Mnasri & Rayen Saidi)
-Responsible for:
-- Statistical history analysis & rolling metrics (history.py)
-- Cyber-physical anomaly & spoofing detection (anomaly_detector.py)
-- Dynamic trust scoring & verdict classification (trust_assessor.py)
-- Containment policy & attack mitigation engine (containment.py)
+Core Guardian Security & Sanity Subsystem.
+
+The active implementation is the core work restored from the preserved
+``src/core`` worktree files. The prototype implementation remains available
+under ``core_prototype`` for traceability.
 """
 
 from .history import HistoryTracker
@@ -18,4 +17,3 @@ __all__ = [
     "TrustAssessor",
     "ContainmentEngine",
 ]
-
