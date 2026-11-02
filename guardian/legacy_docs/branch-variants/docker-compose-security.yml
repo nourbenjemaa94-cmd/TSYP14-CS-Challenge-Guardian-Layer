@@ -1,0 +1,19 @@
+# This repository is the Guardian folder, so the env file is .env here.
+# TODO(security): ASSUMPTION — in the triplet checkout the same file is
+# guardian/.env and the compose file at the triplet root should use that path.
+services:
+  guardian:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    command:
+      - uvicorn
+      - guardian.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
