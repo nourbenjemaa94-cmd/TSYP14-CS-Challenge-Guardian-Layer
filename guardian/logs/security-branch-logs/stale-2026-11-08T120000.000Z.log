@@ -1,0 +1,7 @@
+scenario=stale
+started_at=2026-11-08T12:00:00.000Z
+expected=STALE_TIMESTAMP
+actual=STALE_TIMESTAMP
+http_status=422
+event_id=evt-stale
+match=true
