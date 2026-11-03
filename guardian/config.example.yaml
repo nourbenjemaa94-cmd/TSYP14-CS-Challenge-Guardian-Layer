@@ -22,10 +22,6 @@ partners:
 
 security:
   enabled: true
-  token_header: "Authorization"
-  valid_tokens:
-    - "valid_token"
-    - "triplet07-supersecret-token"
   freshness_window_seconds: 300
   replay_cache_size: 10000
 
