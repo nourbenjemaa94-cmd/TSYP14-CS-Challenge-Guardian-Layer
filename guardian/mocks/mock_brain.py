@@ -9,30 +9,31 @@ that reply must fail verification. The run writes ``logs/verdict-request-<stamp>
 import argparse
 import copy
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from guardian.config import AppConfig, load_config
+from guardian.config import Settings
 from guardian.security.authentication import sign_envelope, verify_signature
 from guardian.security.errors import SecurityConfigurationError
 from guardian.security.freshness import format_timestamp
-from guardian.security.gate import SecuritySettings
 from mocks.runtime import ROOT, Poster, httpx_poster, write_log
+
+VERDICT_PATH = "/v1/verdicts/query"
 
 
 def execute(
     *,
     post: Poster,
-    config: AppConfig,
     brain_key: str,
     guardian_key: str,
     now: datetime,
     log_dir: Path,
+    path: str = VERDICT_PATH,
 ) -> dict[str, Any]:
     """Request one verdict and check the signature Guardian returns."""
-    path = config.route("request_verdict").path
     event_id = "evt-verdict-request"
     body = sign_envelope(
         {
@@ -88,22 +89,21 @@ def execute(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ask Guardian for a signed verdict.")
     parser.add_argument("--base-url", default=None)
-    parser.add_argument("--config", default=None)
     parser.add_argument("--log-dir", default=None)
     args = parser.parse_args(argv)
     try:
-        settings = SecuritySettings.from_env()
+        security = Settings.load().security
     except SecurityConfigurationError as exc:
         print(str(exc))
         return 2
-    config_path = Path(args.config) if args.config else ROOT / "config.example.yaml"
-    config = load_config(config_path)
-    base_url = args.base_url or config.guardian_base_url
+    if security is None:
+        print("Guardian cannot start: security settings were not loaded.")
+        return 2
+    base_url = args.base_url or os.getenv("GUARDIAN_BASE_URL", "http://127.0.0.1:8000")
     result = execute(
         post=httpx_poster(base_url),
-        config=config,
-        brain_key=settings.hmac_key_brain,
-        guardian_key=settings.hmac_key_guardian,
+        brain_key=security.hmac_key_brain,
+        guardian_key=security.hmac_key_guardian,
         now=datetime.now().astimezone(),
         log_dir=Path(args.log_dir) if args.log_dir else ROOT / "logs",
     )

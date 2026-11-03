@@ -11,17 +11,20 @@ Run from the repository root:
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from guardian.config import AppConfig, load_config
+from guardian.config import Settings
 from guardian.security.authentication import sign_envelope
 from guardian.security.errors import SecurityConfigurationError
 from guardian.security.freshness import format_timestamp
-from guardian.security.gate import SecuritySettings
 from mocks.runtime import ROOT, Poster, actual_code, httpx_poster, write_log
+
+READING_PATH = "/api/v1/telemetry"
+TWIN_ALT_PAYLOAD = {"levelOfWater": 1.8, "unitOfMeasure": "m", "gauge": "S01"}
 
 MODES = (
     "normal",
@@ -33,6 +36,7 @@ MODES = (
     "stale",
     "future",
     "flood",
+    "twin-alt",
 )
 
 EXPECTED = {
@@ -45,6 +49,7 @@ EXPECTED = {
     "stale": "STALE_TIMESTAMP",
     "future": "FUTURE_TIMESTAMP",
     "flood": "RATE_LIMITED",
+    "twin-alt": "UNKNOWN_SCHEMA",
 }
 
 
@@ -52,18 +57,17 @@ def execute(
     mode: str,
     *,
     post: Poster,
-    config: AppConfig,
     twin_key: str,
     brain_key: str,
     now: datetime,
     log_dir: Path,
     burst: int,
     flood_threshold: int,
+    path: str = READING_PATH,
 ) -> dict[str, Any]:
     """Send one scenario and return the expected code, the actual code, and the log path."""
     if mode not in EXPECTED:
         raise SystemExit(f"Unknown mode {mode!r}. Choose one of: {', '.join(MODES)}.")
-    path = config.route("publish_reading").path
     status, body, event_id = _run_mode(
         mode,
         post=post,
@@ -121,6 +125,11 @@ def _run_mode(
         timestamp = format_timestamp(now + timedelta(seconds=6))
     layer = "rogue" if mode == "unknown-layer" else "twin"
     key = brain_key if mode == "wrong-key" else twin_key
+    message_type = "sensor_reading"
+    message_payload = {"metric": "water_level", "value": 180, "unit": "cm"}
+    if mode == "twin-alt":
+        message_type = "water_reading"
+        message_payload = dict(TWIN_ALT_PAYLOAD)
     payload, event_id = _signed_reading(
         key,
         now,
@@ -129,6 +138,8 @@ def _run_mode(
         layer=layer,
         timestamp=timestamp,
         sign=mode != "unsigned",
+        message_type=message_type,
+        message_payload=message_payload,
     )
     if mode == "tampered":
         parsed = json.loads(payload)
@@ -170,6 +181,8 @@ def _signed_reading(
     layer: str = "twin",
     timestamp: str | None = None,
     sign: bool = True,
+    message_type: str = "sensor_reading",
+    message_payload: dict[str, Any] | None = None,
 ) -> tuple[bytes, str]:
     body: dict[str, Any] = {
         "schema_version": "1.0",
@@ -178,8 +191,8 @@ def _signed_reading(
         "timestamp": timestamp or format_timestamp(now),
         "source": {"layer": layer, "device_id": "S01"},
         "zone_id": "PORT",
-        "type": "sensor_reading",
-        "payload": {"metric": "water_level", "value": 180, "unit": "cm"},
+        "type": message_type,
+        "payload": message_payload or {"metric": "water_level", "value": 180, "unit": "cm"},
     }
     if sign:
         body = sign_envelope(body, key)
@@ -190,27 +203,26 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Send one Twin scenario to Guardian.")
     parser.add_argument("--mode", required=True, choices=MODES)
     parser.add_argument("--base-url", default=None)
-    parser.add_argument("--config", default=None)
     parser.add_argument("--log-dir", default=None)
     args = parser.parse_args(argv)
     try:
-        settings = SecuritySettings.from_env()
+        security = Settings.load().security
     except SecurityConfigurationError as exc:
         print(str(exc))
         return 2
-    config_path = Path(args.config) if args.config else ROOT / "config.example.yaml"
-    config = load_config(config_path)
-    base_url = args.base_url or config.guardian_base_url
+    if security is None:
+        print("Guardian cannot start: security settings were not loaded.")
+        return 2
+    base_url = args.base_url or os.getenv("GUARDIAN_BASE_URL", "http://127.0.0.1:8000")
     result = execute(
         args.mode,
         post=httpx_poster(base_url),
-        config=config,
-        twin_key=settings.hmac_key_twin,
-        brain_key=settings.hmac_key_brain,
+        twin_key=security.hmac_key_twin,
+        brain_key=security.hmac_key_brain,
         now=datetime.now().astimezone(),
         log_dir=Path(args.log_dir) if args.log_dir else ROOT / "logs",
-        burst=settings.rate_burst,
-        flood_threshold=settings.flood_threshold,
+        burst=security.rate_burst,
+        flood_threshold=security.flood_threshold,
     )
     print(f"expected={result['expected']} actual={result['actual']}")
     print(f"log={result['log_path']}")
