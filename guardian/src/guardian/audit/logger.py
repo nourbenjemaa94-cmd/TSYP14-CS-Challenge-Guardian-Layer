@@ -5,9 +5,9 @@ Helper de journalisation d'événements pour le Guardian (Member 4: Ghaith Mnasr
 Provides structured logging compliant with Requirement R2 and R3.
 """
 
-import sys
 import logging
-from typing import Dict, Any, Optional, List
+import sys
+from typing import Any
 
 # TODO(guardian-integration): absolute import; one package root
 from guardian.audit.timeline import get_utc_now
@@ -19,9 +19,9 @@ def log_event(
     stage: str,
     verdict: str,
     reason: str,
-    action: Optional[str] = None,
-    anomaly_flags: Optional[List[str]] = None
-) -> Dict[str, Any]:
+    action: str | None = None,
+    anomaly_flags: list[str] | None = None
+) -> dict[str, Any]:
     """
     Enregistre un événement structuré dans le logger d'audit.
     Garantit la corrélation par event_id et l'horodatage UTC.

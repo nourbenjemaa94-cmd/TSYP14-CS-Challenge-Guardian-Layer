@@ -8,34 +8,34 @@ Exposes:
 - GET /health for container liveness and orchestration readiness
 """
 
-from typing import Dict, Any
+from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from guardian.audit.timeline import timeline_manager
-from guardian.audit.logger import get_audit_logger
 from guardian.audit.event_store import default_event_store
-from guardian.core.anomaly_detector import AnomalyDetector
-from guardian.core.trust_assessor import TrustAssessor
-from guardian.core.containment import ContainmentEngine
-from guardian.orchestration.pipeline import GuardianPipeline
+from guardian.audit.logger import get_audit_logger
+from guardian.audit.timeline import timeline_manager
 from guardian.config import settings
+from guardian.core.anomaly_detector import AnomalyDetector
+from guardian.core.containment import ContainmentEngine
+from guardian.core.trust_assessor import TrustAssessor
+from guardian.orchestration.pipeline import GuardianPipeline
 
 # Member 4 standalone fallback interfaces (auto-loads real modules once Member 1, 2, 5, 6 commit)
 try:
     from security.authentication import SecurityManager
 except ImportError:
     class SecurityManager:
-        def validate(self, raw_message: Dict[str, Any]) -> bool:
+        def validate(self, raw_message: dict[str, Any]) -> bool:
             return raw_message.get("token") != "invalid"
 
 try:
     from adapters.contract.mapper import ContractMapper
 except ImportError:
     class ContractMapper:
-        def map_to_canonical(self, raw_message: Dict[str, Any]) -> Dict[str, Any]:
+        def map_to_canonical(self, raw_message: dict[str, Any]) -> dict[str, Any]:
             raw_val = raw_message.get("levelOfWater", raw_message.get("value", 0))
             unit = raw_message.get("unit", "m")
             val_cm = raw_val * 100 if unit == "m" else raw_val
@@ -53,7 +53,7 @@ except ImportError:
     class RestBrainOutputAdapter:
         def __init__(self, endpoint_url: str = ""):
             self.endpoint_url = endpoint_url
-        async def send_to_brain(self, payload: Dict[str, Any]) -> bool:
+        async def send_to_brain(self, payload: dict[str, Any]) -> bool:
             return True
 
 # Initialize application
@@ -122,7 +122,7 @@ async def websocket_timeline_endpoint(websocket: WebSocket):
 
 
 @app.post("/api/v1/telemetry")
-async def ingest_telemetry(payload: Dict[str, Any]):
+async def ingest_telemetry(payload: dict[str, Any]):
     """
     Ingests raw sensor telemetry from Twin (Layer 1).
     Evaluates through GuardianPipeline:

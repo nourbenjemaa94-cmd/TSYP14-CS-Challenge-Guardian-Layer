@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields, replace
 from datetime import timedelta
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any
 
 # TODO(guardian-integration): absolute import; one package root
 from guardian.core.history import HistoryTracker, Reading, ReadingError
@@ -10,7 +11,7 @@ from guardian.core.history import HistoryTracker, Reading, ReadingError
 HARD = "hard"
 SOFT = "soft"
 
-SEVERITY: Dict[str, str] = {
+SEVERITY: dict[str, str] = {
     "SUDDEN_SPIKE_DETECTED": HARD,
     "PHYSICAL_BOUNDS_VIOLATION": HARD,
     "UNIT_MISMATCH": HARD,
@@ -51,7 +52,7 @@ class Finding:
     def severity(self) -> str:
         return severity_of(self.code)
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         return {"code": self.code, "severity": self.severity, "detail": self.detail}
 
 
@@ -61,12 +62,12 @@ class DetectionResult:
     sensor_id: str
     metric: str
     timestamp: str
-    findings: Tuple[Finding, ...] = ()
+    findings: tuple[Finding, ...] = ()
     recorded: bool = False
 
     @property
-    def codes(self) -> List[str]:
-        seen: List[str] = []
+    def codes(self) -> list[str]:
+        seen: list[str] = []
         for finding in self.findings:
             if finding.code not in seen:
                 seen.append(finding.code)
@@ -77,13 +78,13 @@ class DetectionResult:
         return any(f.severity == HARD for f in self.findings)
 
     @property
-    def primary_code(self) -> Optional[str]:
+    def primary_code(self) -> str | None:
         for finding in self.findings:
             if finding.severity == HARD:
                 return finding.code
         return self.findings[0].code if self.findings else None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "event_id": self.event_id, "sensor_id": self.sensor_id, "metric": self.metric,
             "timestamp": self.timestamp, "recorded": self.recorded,
@@ -91,7 +92,7 @@ class DetectionResult:
         }
 
     @classmethod
-    def from_codes(cls, msg: Any, codes: List[str]) -> "DetectionResult":
+    def from_codes(cls, msg: Any, codes: list[str]) -> DetectionResult:
         data = msg if isinstance(msg, Mapping) else {}
         return cls(
             event_id=str(data.get("event_id") or ""),
@@ -105,9 +106,9 @@ class DetectionResult:
 
 @dataclass(frozen=True)
 class MetricLimits:
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
-    max_rate_per_sec: Optional[float] = None
+    min_value: float | None = None
+    max_value: float | None = None
+    max_rate_per_sec: float | None = None
     min_dt_sec: float = 1.0
     stuck_count: int = 0
     stuck_tolerance: float = 0.0
@@ -124,12 +125,12 @@ class MetricLimits:
 class CorrelationRule:
     metric: str = "water_level"
     trigger_above: float = 150.0
-    supporters: Tuple[Tuple[str, float], ...] = (("camera_flood_score", 0.5), ("emergency_calls", 1.0))
+    supporters: tuple[tuple[str, float], ...] = (("camera_flood_score", 0.5), ("emergency_calls", 1.0))
     min_supporters: int = 1
     window_sec: float = 120.0
 
 
-def default_metrics() -> Dict[str, MetricLimits]:
+def default_metrics() -> dict[str, MetricLimits]:
     return {
         "water_level": MetricLimits(0.0, 1000.0, 15.0, 1.0, 10, 0.0, "cm"),
         "traffic_density": MetricLimits(0.0, 500.0, 50.0, 1.0, 10),
@@ -152,16 +153,16 @@ class DetectorConfig:
     persistence_readings: int = 3
     hard_rate_factor: float = 3.0
     metrics: Mapping[str, MetricLimits] = field(default_factory=default_metrics)
-    correlations: Tuple[CorrelationRule, ...] = (CorrelationRule(),)
+    correlations: tuple[CorrelationRule, ...] = (CorrelationRule(),)
 
     def __post_init__(self) -> None:
         if self.persistence_readings < 1 or self.hard_rate_factor < 1:
             raise ValueError("persistence_readings must be >= 1 and hard_rate_factor >= 1")
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "DetectorConfig":
+    def from_mapping(cls, data: Mapping[str, Any]) -> DetectorConfig:
         base = cls()
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
         for key in ("persistence_readings", "hard_rate_factor"):
             if key in data:
                 kwargs[key] = type(getattr(base, key))(data[key])
@@ -185,12 +186,12 @@ class DetectorConfig:
 class AnomalyDetector:
     def __init__(
         self,
-        config: Optional[DetectorConfig] = None,
-        history: Optional[HistoryTracker] = None,
+        config: DetectorConfig | None = None,
+        history: HistoryTracker | None = None,
         *,
-        water_spike_threshold_cm: Optional[float] = None,
-        min_water_level_cm: Optional[float] = None,
-        max_water_level_cm: Optional[float] = None,
+        water_spike_threshold_cm: float | None = None,
+        min_water_level_cm: float | None = None,
+        max_water_level_cm: float | None = None,
     ) -> None:
         cfg = config or DetectorConfig()
         if min_water_level_cm is not None or max_water_level_cm is not None:
@@ -210,7 +211,7 @@ class AnomalyDetector:
         self.config = cfg
         self.history = history if history is not None else HistoryTracker()
 
-    def detect(self, canonical_msg: Dict[str, Any], history: Optional[List[Dict[str, Any]]] = None) -> List[str]:
+    def detect(self, canonical_msg: dict[str, Any], history: list[dict[str, Any]] | None = None) -> list[str]:
         return self.analyze(canonical_msg).codes
 
     def analyze(self, canonical_msg: Any) -> DetectionResult:
@@ -222,7 +223,7 @@ class AnomalyDetector:
         if self.history.has_event(reading.event_id):
             return self._result(reading, [Finding("DUPLICATE_EVENT", "event_id was already processed")], False)
 
-        findings: List[Finding] = []
+        findings: list[Finding] = []
         limits = self.config.metrics.get(reading.metric)
         corroboration = self._corroboration(reading)
         if limits is None:
@@ -241,7 +242,7 @@ class AnomalyDetector:
             recorded = False
         return self._result(reading, findings, recorded)
 
-    def _check_limits(self, reading: Reading, limits: MetricLimits, corroboration: Optional[bool]) -> List[Finding]:
+    def _check_limits(self, reading: Reading, limits: MetricLimits, corroboration: bool | None) -> list[Finding]:
         value = reading.value
         if limits.unit and reading.unit and reading.unit != limits.unit:
             return [Finding("UNIT_MISMATCH", f"expected '{limits.unit}', got '{reading.unit}'")]
@@ -250,7 +251,7 @@ class AnomalyDetector:
         ):
             return [Finding("PHYSICAL_BOUNDS_VIOLATION",
                             f"{value} outside [{limits.min_value}, {limits.max_value}]")]
-        findings: List[Finding] = []
+        findings: list[Finding] = []
         reference = self.history.reference(reading.sensor_id)
         if reference is not None and limits.max_rate_per_sec is not None:
             previous = self.history.entries(reading.sensor_id)[-1]
@@ -269,8 +270,8 @@ class AnomalyDetector:
                 findings.append(Finding("SENSOR_FROZEN_STAGNANT", f"{limits.stuck_count} identical readings in a row"))
         return findings
 
-    def _corroboration(self, reading: Reading) -> Optional[bool]:
-        verdict: Optional[bool] = None
+    def _corroboration(self, reading: Reading) -> bool | None:
+        verdict: bool | None = None
         for rule in self.config.correlations:
             if rule.metric != reading.metric or reading.value < rule.trigger_above:
                 continue
@@ -290,7 +291,7 @@ class AnomalyDetector:
                 return False
         return verdict
 
-    def _persistence(self, reading: Reading, findings: List[Finding]) -> List[Finding]:
+    def _persistence(self, reading: Reading, findings: list[Finding]) -> list[Finding]:
         for finding in findings:
             if finding.severity != SOFT:
                 continue
@@ -300,7 +301,7 @@ class AnomalyDetector:
         return []
 
     @staticmethod
-    def _result(reading: Reading, findings: List[Finding], recorded: bool) -> DetectionResult:
+    def _result(reading: Reading, findings: list[Finding], recorded: bool) -> DetectionResult:
         return DetectionResult(reading.event_id, reading.sensor_id, reading.metric,
                                reading.ts.isoformat(), tuple(findings), recorded)
 

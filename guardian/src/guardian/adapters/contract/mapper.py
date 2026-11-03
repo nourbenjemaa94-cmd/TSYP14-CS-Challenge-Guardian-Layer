@@ -207,12 +207,18 @@ class GenericMapper:
         if profile.detected_path:
             detected = get(profile.detected_path)
             if not isinstance(detected, bool):
-                raise MappingError(MappingErrorCode.INVALID_VALUE, "detected must be a boolean", path=profile.detected_path)
+                raise MappingError(
+                    MappingErrorCode.INVALID_VALUE, "detected must be a boolean", path=profile.detected_path
+                )
             payload["detected"] = detected
         if profile.confidence_path:
             confidence = _finite_number(get(profile.confidence_path), profile.confidence_path)
             if not 0.0 <= confidence <= 1.0:
-                raise MappingError(MappingErrorCode.INVALID_VALUE, "confidence must be within 0..1", path=profile.confidence_path)
+                raise MappingError(
+                    MappingErrorCode.INVALID_VALUE,
+                    "confidence must be within 0..1",
+                    path=profile.confidence_path,
+                )
             payload["confidence"] = confidence
         return payload
 
@@ -221,8 +227,16 @@ class GenericMapper:
         # Guardian records the reference only. It never fetches the URI (handoff item 14).
         media_type = get(profile.media_type_path)
         if not isinstance(media_type, str) or not _MEDIA_TYPE.fullmatch(media_type):
-            raise MappingError(MappingErrorCode.INVALID_VALUE, "media_type must look like image/jpeg", path=profile.media_type_path)
+            raise MappingError(
+                MappingErrorCode.INVALID_VALUE,
+                "media_type must look like image/jpeg",
+                path=profile.media_type_path,
+            )
         uri = get(profile.uri_path)
         if not isinstance(uri, str) or len(uri) > _MAX_URI_LENGTH or not uri.startswith(_URI_SCHEMES):
-            raise MappingError(MappingErrorCode.INVALID_VALUE, "uri must be an http(s), rtsp or s3 URI", path=profile.uri_path)
+            raise MappingError(
+                MappingErrorCode.INVALID_VALUE,
+                "uri must be an http(s), rtsp or s3 URI",
+                path=profile.uri_path,
+            )
         return {"media_type": media_type, "uri": uri}

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, replace
-from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Tuple
+from typing import Any, Protocol
 
 # TODO(guardian-integration): absolute import; one package root
 from guardian.core.history import SUSPICIOUS, TRUSTED, UNTRUSTED, HistoryTracker, utc_now_iso
@@ -43,9 +44,9 @@ class ContainmentConfig:
             raise ValueError("containment counters must all be >= 1")
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "ContainmentConfig":
+    def from_mapping(cls, data: Mapping[str, Any]) -> ContainmentConfig:
         base = cls()
-        values: Dict[str, Any] = {}
+        values: dict[str, Any] = {}
         for key in ("isolate_after_untrusted", "quarantine_after_suspicious",
                     "release_quarantine_after_trusted", "max_remembered"):
             if key in data:
@@ -62,15 +63,15 @@ class ContainmentAction:
     target: str
     event_id: str
     status: str
-    lifecycle: Tuple[str, ...]
+    lifecycle: tuple[str, ...]
     reason: str
-    changes: Dict[str, Any]
+    changes: dict[str, Any]
     remote_confirmed: bool
     error: str
     idempotency_key: str
     timestamp: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -82,32 +83,32 @@ class ContainmentReport:
     reading_action: str
     state_before: str
     state_after: str
-    actions: Tuple[ContainmentAction, ...]
+    actions: tuple[ContainmentAction, ...]
     timestamp: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 class ContainmentEngine:
     def __init__(
         self,
-        config: Optional[ContainmentConfig] = None,
-        history: Optional[HistoryTracker] = None,
-        port: Optional[ContainmentPort] = None,
+        config: ContainmentConfig | None = None,
+        history: HistoryTracker | None = None,
+        port: ContainmentPort | None = None,
         clock: Callable[[], str] = utc_now_iso,
     ) -> None:
         self.config = config or ContainmentConfig()
         self.history = history if history is not None else HistoryTracker()
         self.port = port
         self._clock = clock
-        self._states: Dict[str, str] = {}
-        self._counts: Dict[str, Tuple[str, int]] = {}
+        self._states: dict[str, str] = {}
+        self._counts: dict[str, tuple[str, int]] = {}
         self._remote_pending: set = set()
-        self._reports: "OrderedDict[str, ContainmentReport]" = OrderedDict()
+        self._reports: OrderedDict[str, ContainmentReport] = OrderedDict()
         self._sequence = 0
 
-    def evaluate_action(self, flags: List[str], verdict: str) -> str:
+    def evaluate_action(self, flags: list[str], verdict: str) -> str:
         if verdict == TRUSTED:
             return ALLOW
         if verdict == SUSPICIOUS:
@@ -120,7 +121,7 @@ class ContainmentEngine:
             return cached
         cfg, sensor = self.config, verdict.sensor_id
         before = self.state(sensor)
-        actions: List[ContainmentAction] = []
+        actions: list[ContainmentAction] = []
 
         if verdict.recorded:
             count = self._count(sensor, verdict.verdict)
@@ -217,7 +218,7 @@ class ContainmentEngine:
     def state(self, sensor_id: str) -> str:
         return self._states.get(sensor_id, ACTIVE)
 
-    def isolated_sensors(self) -> List[str]:
+    def isolated_sensors(self) -> list[str]:
         return sorted(s for s, st in self._states.items() if st == ISOLATED)
 
     def mark_sensor_isolated(self, sensor_id: str) -> None:
@@ -235,12 +236,12 @@ class ContainmentEngine:
         self._counts[sensor_id] = (verdict, count)
         return count
 
-    def _new_id(self, kind: str, target: str) -> Tuple[str, str]:
+    def _new_id(self, kind: str, target: str) -> tuple[str, str]:
         self._sequence += 1
         action_id = f"CA-{self._sequence:06d}"
         return action_id, f"guardian:{kind.lower()}:{target}:{action_id}"
 
-    def _call_port(self, method: str, target: str, key: str) -> Optional[Tuple[bool, bool, bool, str]]:
+    def _call_port(self, method: str, target: str, key: str) -> tuple[bool, bool, bool, str] | None:
         if self.port is None:
             return None
         try:
@@ -251,9 +252,9 @@ class ContainmentEngine:
             return False, False, False, f"{type(exc).__name__}: {str(exc)[:160]}"
 
     def _build(self, action_id: str, kind: str, target: str, event_id: str, reason: str, key: str,
-               outcome: Optional[Tuple[bool, bool, bool, str]], changes: Dict[str, Any],
+               outcome: tuple[bool, bool, bool, str] | None, changes: dict[str, Any],
                noop: bool = False, error: str = "") -> ContainmentAction:
-        lifecycle: Tuple[str, ...]
+        lifecycle: tuple[str, ...]
         confirmed = False
         if error:
             status, lifecycle = FAILED, (REQUESTED, FAILED)

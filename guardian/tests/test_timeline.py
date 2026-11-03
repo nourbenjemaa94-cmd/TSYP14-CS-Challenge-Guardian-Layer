@@ -16,11 +16,12 @@ Vérifie l'exigence R3 :
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
+
 from fastapi.testclient import TestClient
 
+from guardian.audit.timeline import timeline_manager
 from guardian.main import app
 from guardian.orchestration.pipeline import GuardianPipeline
-from guardian.audit.timeline import timeline_manager
 
 
 # ---------------------------------------------------------------------------

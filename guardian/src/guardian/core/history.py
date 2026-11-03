@@ -3,9 +3,10 @@ from __future__ import annotations
 import math
 import re
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Deque, Dict, List, Mapping, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 TRUSTED = "TRUSTED"
 SUSPICIOUS = "SUSPICIOUS"
@@ -22,7 +23,7 @@ class ReadingError(ValueError):
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def parse_timestamp(value: Any) -> datetime:
@@ -34,13 +35,16 @@ def parse_timestamp(value: Any) -> datetime:
             text = text[:-1] + "+00:00"
         try:
             parsed = datetime.fromisoformat(text)
-        except ValueError:
-            raise ReadingError("INVALID_TIMESTAMP", f"not an ISO 8601 timestamp: {value[:40]!r}")
+        except ValueError as exc:
+            raise ReadingError(
+                "INVALID_TIMESTAMP",
+                f"not an ISO 8601 timestamp: {value[:40]!r}",
+            ) from exc
     else:
         raise ReadingError("INVALID_TIMESTAMP", "timestamp is missing or not a string")
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 @dataclass(frozen=True)
@@ -53,7 +57,7 @@ class Reading:
     ts: datetime
 
     @classmethod
-    def from_message(cls, msg: Any) -> "Reading":
+    def from_message(cls, msg: Any) -> Reading:
         if not isinstance(msg, Mapping):
             raise ReadingError("MALFORMED_MESSAGE", "reading must be a JSON object")
         sensor_id = msg.get("sensor_id")
@@ -78,8 +82,8 @@ class Reading:
 @dataclass
 class HistoryEntry:
     reading: Reading
-    codes: Tuple[str, ...] = ()
-    verdict: Optional[str] = None
+    codes: tuple[str, ...] = ()
+    verdict: str | None = None
     rolled_back: bool = False
 
     @property
@@ -104,10 +108,10 @@ class HistoryTracker:
         self.window_size = window_size
         self.verdict_window = verdict_window
         self.max_sensors = max_sensors
-        self._readings: Dict[str, Deque[HistoryEntry]] = {}
-        self._verdicts: Dict[str, Deque[VerdictRecord]] = {}
+        self._readings: dict[str, deque[HistoryEntry]] = {}
+        self._verdicts: dict[str, deque[VerdictRecord]] = {}
 
-    def record(self, reading: Reading, codes: Tuple[str, ...] = ()) -> HistoryEntry:
+    def record(self, reading: Reading, codes: tuple[str, ...] = ()) -> HistoryEntry:
         window = self._readings.get(reading.sensor_id)
         if window is None:
             if len(self._readings) >= self.max_sensors:
@@ -117,13 +121,13 @@ class HistoryTracker:
         window.append(entry)
         return entry
 
-    def entries(self, sensor_id: str) -> List[HistoryEntry]:
+    def entries(self, sensor_id: str) -> list[HistoryEntry]:
         return list(self._readings.get(sensor_id, ()))
 
-    def sensors(self) -> List[str]:
+    def sensors(self) -> list[str]:
         return sorted(self._readings)
 
-    def find_entry(self, event_id: str) -> Optional[HistoryEntry]:
+    def find_entry(self, event_id: str) -> HistoryEntry | None:
         if not event_id:
             return None
         for window in self._readings.values():
@@ -135,13 +139,13 @@ class HistoryTracker:
     def has_event(self, event_id: str) -> bool:
         return self.find_entry(event_id) is not None
 
-    def reference(self, sensor_id: str) -> Optional[HistoryEntry]:
+    def reference(self, sensor_id: str) -> HistoryEntry | None:
         for entry in reversed(self._readings.get(sensor_id, ())):
             if entry.clean:
                 return entry
         return None
 
-    def last_values(self, sensor_id: str, count: int) -> List[float]:
+    def last_values(self, sensor_id: str, count: int) -> list[float]:
         if count <= 0:
             return []
         return [e.reading.value for e in list(self._readings.get(sensor_id, ()))[-count:]]
@@ -154,8 +158,8 @@ class HistoryTracker:
             streak += 1
         return streak
 
-    def recent(self, metric: str, not_before: datetime, not_after: datetime, exclude_sensor: str) -> List[Reading]:
-        found: List[Reading] = []
+    def recent(self, metric: str, not_before: datetime, not_after: datetime, exclude_sensor: str) -> list[Reading]:
+        found: list[Reading] = []
         for sensor_id, window in self._readings.items():
             if sensor_id == exclude_sensor:
                 continue
@@ -167,7 +171,7 @@ class HistoryTracker:
                 break
         return found
 
-    def mark_rolled_back(self, event_id: str, flag: bool = True) -> Optional[HistoryEntry]:
+    def mark_rolled_back(self, event_id: str, flag: bool = True) -> HistoryEntry | None:
         entry = self.find_entry(event_id)
         if entry is not None:
             entry.rolled_back = flag
@@ -190,32 +194,32 @@ class HistoryTracker:
             entry.verdict = record.verdict
         return True
 
-    def verdicts(self, sensor_id: str, count: Optional[int] = None) -> List[VerdictRecord]:
+    def verdicts(self, sensor_id: str, count: int | None = None) -> list[VerdictRecord]:
         items = list(self._verdicts.get(sensor_id, ()))
         return items if count is None else items[-count:] if count > 0 else []
 
-    def calculate_mean(self, history: List[Dict[str, Any]]) -> Optional[float]:
+    def calculate_mean(self, history: list[dict[str, Any]]) -> float | None:
         values = [r.get("value") for r in history if isinstance(r.get("value"), (int, float))]
         return sum(values) / len(values) if values else None
 
-    def calculate_std_dev(self, history: List[Dict[str, Any]]) -> Optional[float]:
+    def calculate_std_dev(self, history: list[dict[str, Any]]) -> float | None:
         values = [r.get("value") for r in history if isinstance(r.get("value"), (int, float))]
         if len(values) < 2:
             return 0.0
         mean = sum(values) / len(values)
         return math.sqrt(sum((x - mean) ** 2 for x in values) / (len(values) - 1))
 
-    def get_latest_value(self, history: List[Dict[str, Any]]) -> Optional[float]:
+    def get_latest_value(self, history: list[dict[str, Any]]) -> float | None:
         if not history:
             return None
         value = history[-1].get("value")
         return float(value) if isinstance(value, (int, float)) else None
 
-    def calculate_delta(self, current_value: float, history: List[Dict[str, Any]]) -> float:
+    def calculate_delta(self, current_value: float, history: list[dict[str, Any]]) -> float:
         previous = self.get_latest_value(history)
         return 0.0 if previous is None else abs(current_value - previous)
 
-    def is_sensor_frozen(self, history: List[Dict[str, Any]], count_threshold: int = 5) -> bool:
+    def is_sensor_frozen(self, history: list[dict[str, Any]], count_threshold: int = 5) -> bool:
         if len(history) < count_threshold:
             return False
         recent = [r.get("value") for r in history[-count_threshold:]]

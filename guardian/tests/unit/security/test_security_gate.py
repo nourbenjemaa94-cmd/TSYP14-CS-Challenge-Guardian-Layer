@@ -6,6 +6,12 @@ import json
 from copy import deepcopy
 
 import pytest
+
+from guardian.adapters.contract.ai_mapper import suggest_mapping
+from guardian.security.authentication import canonical_bytes, signature_for, verify_signature
+from guardian.security.errors import ReasonCode, SecurityConfigurationError, SecurityRejection, WarningCode
+from guardian.security.freshness import format_timestamp
+from guardian.security.gate import SecuritySettings
 from tests.support import (
     BRAIN_KEY,
     FIXED,
@@ -17,12 +23,6 @@ from tests.support import (
     reading,
     signed,
 )
-
-from guardian.adapters.contract.ai_mapper import suggest_mapping
-from guardian.security.authentication import canonical_bytes, signature_for, verify_signature
-from guardian.security.errors import ReasonCode, SecurityConfigurationError, SecurityRejection, WarningCode
-from guardian.security.freshness import format_timestamp
-from guardian.security.gate import SecuritySettings
 
 
 def test_known_canonical_hmac_vector() -> None:

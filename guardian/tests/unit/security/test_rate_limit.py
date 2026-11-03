@@ -1,9 +1,9 @@
 """Token bucket and the once-per-window flood signal."""
 
 import pytest
-from tests.support import FakeTime, make_gate, raw, reading, signed
 
 from guardian.security.errors import ReasonCode, SecurityRejection
+from tests.support import FakeTime, make_gate, raw, reading, signed
 
 
 def _send(gate, clock: FakeTime, *, device: str = "S01", seq: int, event_id: str) -> None:

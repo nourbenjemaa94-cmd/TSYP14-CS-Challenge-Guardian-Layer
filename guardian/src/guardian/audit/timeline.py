@@ -8,15 +8,15 @@ Reading Received -> Guardian Verdict -> Containment Action (Isolated / Forwarded
 
 import json
 import logging
-from datetime import datetime, timezone
-from typing import List, Dict, Any, Set
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("guardian.timeline")
 
 
 def get_utc_now() -> str:
     """Returns current UTC timestamp formatted in ISO 8601 with timezone indicator."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class TimelineManager:
@@ -26,8 +26,8 @@ class TimelineManager:
     """
 
     def __init__(self, max_buffer_size: int = 500):
-        self.active_connections: Set[Any] = set()
-        self.event_buffer: List[Dict[str, Any]] = []
+        self.active_connections: set[Any] = set()
+        self.event_buffer: list[dict[str, Any]] = []
         self.max_buffer_size = max_buffer_size
 
     async def connect(self, websocket: Any):
@@ -45,7 +45,7 @@ class TimelineManager:
             self.active_connections.remove(websocket)
             logger.info(f"[TIMELINE] Client disconnected. Active clients: {len(self.active_connections)}")
 
-    async def broadcast(self, event: Dict[str, Any]):
+    async def broadcast(self, event: dict[str, Any]):
         """
         Broadcasts an audit event payload to all connected WebSocket clients.
         Automatically removes stale/disconnected sockets.
@@ -79,7 +79,7 @@ class TimelineManager:
         for dead in dead_connections:
             self.disconnect(dead)
 
-    def get_events_for_correlation(self, event_id: str) -> List[Dict[str, Any]]:
+    def get_events_for_correlation(self, event_id: str) -> list[dict[str, Any]]:
         """Retrieves all chronological timeline events associated with a specific event_id."""
         return [evt for evt in self.event_buffer if evt.get("event_id") == event_id]
 

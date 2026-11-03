@@ -6,9 +6,9 @@ Responsible for:
 - Real-time audit timeline WebSocket streaming (timeline.py)
 """
 
-from .timeline import timeline_manager, get_utc_now, TimelineManager
-from .logger import log_event, get_audit_logger
 from .event_store import EventStore, default_event_store
+from .logger import get_audit_logger, log_event
+from .timeline import TimelineManager, get_utc_now, timeline_manager
 
 __all__ = [
     "timeline_manager",

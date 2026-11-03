@@ -1,6 +1,7 @@
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Mapping, Protocol
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
@@ -10,7 +11,7 @@ class IncomingMessage:
     source: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     received_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
+        default_factory=lambda: datetime.now(UTC)
     )
 
 

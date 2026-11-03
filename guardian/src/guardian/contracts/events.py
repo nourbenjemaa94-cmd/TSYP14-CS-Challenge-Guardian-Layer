@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -60,7 +60,7 @@ class SensorEvent(BaseModel):
     def valid_timestamp(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("timestamp must include timezone")
-        return value.astimezone(timezone.utc)
+        return value.astimezone(UTC)
 
     def to_core_dict(self) -> dict[str, Any]:
         """Exact keys expected by existing core.history.Reading.from_message."""
@@ -130,7 +130,7 @@ class GuardianEvent(BaseModel):
     def valid_occurred_at(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("occurred_at must include timezone")
-        return value.astimezone(timezone.utc)
+        return value.astimezone(UTC)
 
     def to_sensor_event(self) -> SensorEvent:
         """The numeric reading for the core. Only measurement events have one."""

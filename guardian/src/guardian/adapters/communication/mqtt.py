@@ -3,12 +3,12 @@
 # generic subscriber owned by the communications work.
 
 import logging
+import ssl
 from typing import Any
 
 import paho.mqtt.client as mqtt
-import ssl
 
-from .base import IncomingMessage, HandlerResult, MessageHandler
+from .base import HandlerResult, IncomingMessage, MessageHandler
 
 logger = logging.getLogger(__name__)
 

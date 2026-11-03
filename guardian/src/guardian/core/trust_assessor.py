@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any
 
 # TODO(guardian-integration): absolute import; one package root
-from guardian.core.anomaly_detector import DetectionResult, Finding, HARD
+from guardian.core.anomaly_detector import HARD, DetectionResult, Finding
 from guardian.core.history import SUSPICIOUS, TRUSTED, UNTRUSTED, HistoryTracker, VerdictRecord
 
 _LEGACY_REASON = {TRUSTED: "NORMAL", SUSPICIOUS: "DEGRADED_CONFIDENCE", UNTRUSTED: "ANOMALY_DETECTED"}
 
 
-def _default_penalties() -> Dict[str, float]:
+def _default_penalties() -> dict[str, float]:
     return {
         "SUDDEN_SPIKE_DETECTED": 0.8, "PHYSICAL_BOUNDS_VIOLATION": 1.0, "UNIT_MISMATCH": 1.0,
         "PERSISTENT_ANOMALY": 0.8, "SUSPECTED_SPIKE": 0.5, "SENSOR_FROZEN_STAGNANT": 0.5,
@@ -37,9 +38,9 @@ class TrustConfig:
             raise ValueError("recovery_clean_readings must be >= 0 and full_confidence_readings >= 1")
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "TrustConfig":
+    def from_mapping(cls, data: Mapping[str, Any]) -> TrustConfig:
         base = cls()
-        values: Dict[str, Any] = {}
+        values: dict[str, Any] = {}
         for src, dst in (("isolate_threshold", "untrusted_below"), ("quarantine_threshold", "suspicious_below")):
             if src in data:
                 values[dst] = float(data[src])
@@ -63,10 +64,10 @@ class TrustVerdict:
     assessment_id: str
     policy_version: str
     timestamp: str
-    evidence: Tuple[Dict[str, str], ...] = ()
+    evidence: tuple[dict[str, str], ...] = ()
     recorded: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "event_id": self.event_id, "sensor_id": self.sensor_id, "verdict": self.verdict,
             "confidence": self.confidence, "reason_code": self.reason_code, "reason": self.reason,
@@ -79,10 +80,10 @@ class TrustVerdict:
 class TrustAssessor:
     def __init__(
         self,
-        config: Optional[TrustConfig] = None,
-        history: Optional[HistoryTracker] = None,
+        config: TrustConfig | None = None,
+        history: HistoryTracker | None = None,
         *,
-        untrusted_penalty: Optional[float] = None,
+        untrusted_penalty: float | None = None,
     ) -> None:
         cfg = config or TrustConfig()
         if untrusted_penalty is not None:
@@ -91,7 +92,7 @@ class TrustAssessor:
         self.history = history if history is not None else HistoryTracker()
         self._sequence = 0
 
-    def assess(self, canonical_msg: Dict[str, Any], flags: List[str]) -> Tuple[str, str]:
+    def assess(self, canonical_msg: dict[str, Any], flags: list[str]) -> tuple[str, str]:
         verdict = self.evaluate(DetectionResult.from_codes(canonical_msg, list(flags)))
         return verdict.verdict, verdict.reason
 
@@ -123,7 +124,7 @@ class TrustAssessor:
                 result.event_id, result.sensor_id, verdict, reason_code, result.confidence, result.timestamp))
         return result
 
-    def device_trust(self, sensor_id: str) -> Tuple[str, str]:
+    def device_trust(self, sensor_id: str) -> tuple[str, str]:
         recent = self.history.verdicts(sensor_id)
         if not recent:
             return SUSPICIOUS, "NO_HISTORY"

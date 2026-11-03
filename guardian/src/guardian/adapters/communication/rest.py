@@ -3,11 +3,10 @@
 # remains the generic /events receiver owned by the communications work.
 
 import httpx
-
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
-from .base import IncomingMessage, HandlerResult, MessageHandler
+from .base import HandlerResult, IncomingMessage, MessageHandler
 
 
 class RestAdapter:

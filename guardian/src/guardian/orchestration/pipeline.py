@@ -16,10 +16,10 @@ Améliorations apportées :
 """
 
 import uuid
-from typing import Dict, Any
+from typing import Any
 
 from guardian.audit.logger import log_event
-from guardian.audit.timeline import timeline_manager, get_utc_now
+from guardian.audit.timeline import get_utc_now, timeline_manager
 
 
 class GuardianPipeline:
@@ -47,7 +47,7 @@ class GuardianPipeline:
         self.output = output_adapter
         self.timeline = timeline_manager
 
-    async def process_incoming(self, raw_message: Dict[str, Any], logger: Any) -> Dict[str, Any]:
+    async def process_incoming(self, raw_message: dict[str, Any], logger: Any) -> dict[str, Any]:
         """
         Traite un message de capteur entrant avec diffusion temps réel de chaque étape.
         Garantit que le jury peut corréler la cause et l'effet via l'event_id.
