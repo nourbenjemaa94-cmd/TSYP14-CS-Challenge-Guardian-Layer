@@ -18,12 +18,8 @@ Améliorations apportées :
 import uuid
 from typing import Dict, Any, Optional
 
-try:
-    from audit.logger import log_event
-    from audit.timeline import timeline_manager, get_utc_now
-except ImportError:
-    from ..audit.logger import log_event
-    from ..audit.timeline import timeline_manager, get_utc_now
+from guardian.audit.logger import log_event
+from guardian.audit.timeline import timeline_manager, get_utc_now
 
 
 class GuardianPipeline:

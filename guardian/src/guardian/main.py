@@ -8,31 +8,21 @@ Exposes:
 - GET /health for container liveness and orchestration readiness
 """
 
-import sys
 import logging
-from pathlib import Path
 from typing import Dict, Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# Ensure sys.path includes src and src/guardian
-_current_dir = Path(__file__).resolve().parent
-_src_dir = _current_dir.parent
-if str(_current_dir) not in sys.path:
-    sys.path.insert(0, str(_current_dir))
-if str(_src_dir) not in sys.path:
-    sys.path.insert(0, str(_src_dir))
-
-from audit.timeline import timeline_manager
-from audit.logger import get_audit_logger
-from audit.event_store import default_event_store
-from core.anomaly_detector import AnomalyDetector
-from core.trust_assessor import TrustAssessor
-from core.containment import ContainmentEngine
-from orchestration.pipeline import GuardianPipeline
-from config import settings
+from guardian.audit.timeline import timeline_manager
+from guardian.audit.logger import get_audit_logger
+from guardian.audit.event_store import default_event_store
+from guardian.core.anomaly_detector import AnomalyDetector
+from guardian.core.trust_assessor import TrustAssessor
+from guardian.core.containment import ContainmentEngine
+from guardian.orchestration.pipeline import GuardianPipeline
+from guardian.config import settings
 
 # Member 4 standalone fallback interfaces (auto-loads real modules once Member 1, 2, 5, 6 commit)
 try:

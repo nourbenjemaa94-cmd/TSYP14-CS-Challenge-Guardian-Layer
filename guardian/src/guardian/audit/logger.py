@@ -9,10 +9,8 @@ import sys
 import logging
 from typing import Dict, Any, Optional, List
 
-try:
-    from audit.timeline import get_utc_now
-except ImportError:
-    from .timeline import get_utc_now
+# TODO(guardian-integration): absolute import; one package root
+from guardian.audit.timeline import get_utc_now
 
 
 def log_event(

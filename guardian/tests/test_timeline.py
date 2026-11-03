@@ -14,32 +14,14 @@ Vérifie l'exigence R3 :
 5. Vérification de la corrélation via le même event_id sur l'ensemble de la chaîne cause-effet.
 """
 
-import sys
-from pathlib import Path
-
-# Ensure paths are present
-_test_dir = Path(__file__).resolve().parent
-_guardian_dir = _test_dir.parent
-_src_dir = _guardian_dir / "src"
-_pkg_dir = _src_dir / "guardian"
-
-for p in [str(_pkg_dir), str(_src_dir), str(_guardian_dir)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 
-try:
-    from src.guardian.main import app
-    from orchestration.pipeline import GuardianPipeline
-    from audit.timeline import timeline_manager
-except ImportError:
-    from guardian.main import app
-    from guardian.orchestration.pipeline import GuardianPipeline
-    from guardian.audit.timeline import timeline_manager
+from guardian.main import app
+from guardian.orchestration.pipeline import GuardianPipeline
+from guardian.audit.timeline import timeline_manager
 
 
 # ---------------------------------------------------------------------------

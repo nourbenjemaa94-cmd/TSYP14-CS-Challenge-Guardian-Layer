@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from core.anomaly_detector import DetectionResult, Finding, HARD
-from core.history import SUSPICIOUS, TRUSTED, UNTRUSTED, HistoryTracker, VerdictRecord
+# TODO(guardian-integration): absolute import; one package root
+from guardian.core.anomaly_detector import DetectionResult, Finding, HARD
+from guardian.core.history import SUSPICIOUS, TRUSTED, UNTRUSTED, HistoryTracker, VerdictRecord
 
 _LEGACY_REASON = {TRUSTED: "NORMAL", SUSPICIOUS: "DEGRADED_CONFIDENCE", UNTRUSTED: "ANOMALY_DETECTED"}
 

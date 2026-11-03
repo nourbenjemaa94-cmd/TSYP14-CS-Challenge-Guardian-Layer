@@ -4,7 +4,8 @@ from dataclasses import dataclass, field, fields, replace
 from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from core.history import HistoryTracker, Reading, ReadingError
+# TODO(guardian-integration): absolute import; one package root
+from guardian.core.history import HistoryTracker, Reading, ReadingError
 
 HARD = "hard"
 SOFT = "soft"
