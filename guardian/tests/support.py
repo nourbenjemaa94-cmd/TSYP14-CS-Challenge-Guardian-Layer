@@ -4,10 +4,6 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi.testclient import TestClient
-
-from guardian.config import load_config, repo_root
-from guardian.main import create_app
 from guardian.security.authentication import sign_envelope
 from guardian.security.freshness import format_timestamp
 from guardian.security.gate import SecurityGate, SecuritySettings
@@ -89,18 +85,5 @@ def raw(body: dict[str, Any]) -> bytes:
     return json.dumps(body).encode("utf-8")
 
 
-def build_client(
-    clock: FakeTime | None = None,
-    *,
-    core: object | None = None,
-    **setting_overrides: Any,
-) -> tuple[TestClient, Any, FakeTime]:
-    time = clock or FakeTime()
-    app = create_app(
-        settings=make_settings(**setting_overrides),
-        config=load_config(repo_root() / "config.example.yaml", environ={}),
-        clock=time.clock,
-        monotonic=time.monotonic,
-        core=core,
-    )
-    return TestClient(app), app, time
+def make_client(*_args: Any, **_kwargs: Any) -> Any:
+    raise NotImplementedError("Phase 2.4")

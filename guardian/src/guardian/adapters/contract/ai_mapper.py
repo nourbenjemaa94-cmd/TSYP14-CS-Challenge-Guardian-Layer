@@ -93,3 +93,8 @@ Example profile for a measurement:
                 MappingErrorCode.INVALID_PROFILE, "the proposed profile does not match the supplied schema"
             )
         return profile
+
+
+def suggest_mapping(_description: object) -> None:
+    """The live message path must not ask a model for a mapping."""
+    raise RuntimeError("offline-only")
