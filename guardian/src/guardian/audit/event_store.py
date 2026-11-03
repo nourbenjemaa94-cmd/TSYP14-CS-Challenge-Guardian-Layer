@@ -5,7 +5,7 @@ Telemetry event store and sliding window historical buffer.
 Maintains sensor historical readings to enable anomaly detection and trust evaluation.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from collections import defaultdict
 
 

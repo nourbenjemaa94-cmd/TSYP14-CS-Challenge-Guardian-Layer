@@ -16,7 +16,7 @@ Améliorations apportées :
 """
 
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from guardian.audit.logger import log_event
 from guardian.audit.timeline import timeline_manager, get_utc_now

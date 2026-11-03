@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Tuple
 
 # TODO(guardian-integration): absolute import; one package root
-from guardian.core.anomaly_detector import MESSAGE_ONLY_CODES
 from guardian.core.history import SUSPICIOUS, TRUSTED, UNTRUSTED, HistoryTracker, utc_now_iso
 from guardian.core.trust_assessor import TrustVerdict
 

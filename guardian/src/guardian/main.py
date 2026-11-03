@@ -8,7 +8,6 @@ Exposes:
 - GET /health for container liveness and orchestration readiness
 """
 
-import logging
 from typing import Dict, Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status

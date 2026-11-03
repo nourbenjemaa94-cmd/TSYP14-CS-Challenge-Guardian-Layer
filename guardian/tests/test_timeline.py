@@ -14,7 +14,6 @@ Vérifie l'exigence R3 :
 5. Vérification de la corrélation via le même event_id sur l'ensemble de la chaîne cause-effet.
 """
 
-import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
