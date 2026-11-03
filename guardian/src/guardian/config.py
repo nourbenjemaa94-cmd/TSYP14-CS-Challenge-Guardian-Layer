@@ -98,8 +98,3 @@ class Settings(BaseModel):
     def load(cls) -> "Settings":
         return cls(security=SecuritySettings.from_env())
 
-
-# Non-secret defaults for the pipeline that still imports ``settings``.
-# create_app() (Phase 2.4) calls Settings.load() instead.
-settings = Settings()
-

@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from guardian.audit.event_store import default_event_store
 from guardian.audit.logger import get_audit_logger
 from guardian.audit.timeline import timeline_manager
-from guardian.config import settings
+from guardian.config import Settings
 from guardian.core.anomaly_detector import AnomalyDetector
 from guardian.core.containment import ContainmentEngine
 from guardian.core.trust_assessor import TrustAssessor
@@ -74,20 +74,28 @@ app.add_middleware(
 
 logger = get_audit_logger("guardian.main")
 
-# Instantiate default production pipeline
-default_pipeline = GuardianPipeline(
-    security=SecurityManager(),
-    contract=ContractMapper(),
-    event_store=default_event_store,
-    anomaly_detector=AnomalyDetector(
-        water_spike_threshold_cm=settings.detection.flood_water_spike_cm
-    ),
-    trust_assessor=TrustAssessor(),
-    containment=ContainmentEngine(),
-    output_adapter=RestBrainOutputAdapter(
-        endpoint_url=settings.partners.city_brain_url
-    )
-)
+_pipeline: GuardianPipeline | None = None
+
+
+def _default_pipeline() -> GuardianPipeline:
+    """Build the production pipeline. ``Settings.load()`` runs here, not at import."""
+    global _pipeline
+    if _pipeline is None:
+        loaded = Settings.load()
+        _pipeline = GuardianPipeline(
+            security=SecurityManager(),
+            contract=ContractMapper(),
+            event_store=default_event_store,
+            anomaly_detector=AnomalyDetector(
+                water_spike_threshold_cm=loaded.detection.flood_water_spike_cm
+            ),
+            trust_assessor=TrustAssessor(),
+            containment=ContainmentEngine(),
+            output_adapter=RestBrainOutputAdapter(
+                endpoint_url=loaded.partners.city_brain_url
+            ),
+        )
+    return _pipeline
 
 
 @app.get("/health")
@@ -128,7 +136,7 @@ async def ingest_telemetry(payload: dict[str, Any]):
     Evaluates through GuardianPipeline:
     Auth -> Contract Mapping -> Anomaly Detection -> Trust Assessment -> Containment -> Brain Forwarding.
     """
-    result = await default_pipeline.process_incoming(payload, logger)
+    result = await _default_pipeline().process_incoming(payload, logger)
 
     if result.get("status") == "REJECTED" and result.get("reason") == "SECURITY":
         raise HTTPException(
@@ -144,5 +152,7 @@ async def ingest_telemetry(payload: dict[str, Any]):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host=settings.server.host, port=settings.server.port)
+
+    loaded = Settings.load()
+    uvicorn.run(app, host=loaded.server.host, port=loaded.server.port)
 
