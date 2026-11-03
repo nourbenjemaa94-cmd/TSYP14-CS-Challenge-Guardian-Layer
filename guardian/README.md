@@ -21,3 +21,27 @@ pytest -v
 # 3. Start local development server
 uvicorn src.guardian.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+## Local model (optional)
+
+Guardian runs without Ollama. Committed partner profiles still map, and unknown shapes are not onboarded automatically. A local model is only for automatic onboarding.
+
+Three modes:
+
+- **Committed profiles.** Ollama is off. Only profiles already in `config/profiles/` are mapped.
+- **Heuristic only.** Set `GUARDIAN_ONBOARDING_MIN_PROPOSERS=1`. Onboarding may accept the heuristic proposer with no second opinion from a model.
+- **Full.** Ollama is running with the chat model and `nomic-embed-text`. Onboarding asks the heuristic, the embedding model, and the chat model.
+
+From the repository root, with `GUARDIAN_LLM_MODEL` and `GUARDIAN_EMBED_MODEL` set in `guardian/.env`:
+
+```powershell
+.\scripts\setup-ollama.ps1
+```
+
+```bash
+./scripts/setup-ollama.sh
+```
+
+The script checks `ollama --version`, pulls those two models, and prints the names returned by `GET /api/tags`.
+
+Ollama binds to `127.0.0.1`. Running Guardian natively, with `GUARDIAN_LLM_URL=http://localhost:11434`, is the recommended demo setup. Guardian inside Docker cannot reach that address. Set the user environment variable `OLLAMA_HOST=0.0.0.0:11434`, restart Ollama, accept the firewall prompt, and set `GUARDIAN_LLM_URL=http://host.docker.internal:11434` on the Guardian container.
