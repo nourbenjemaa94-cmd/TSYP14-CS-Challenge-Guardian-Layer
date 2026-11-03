@@ -98,7 +98,8 @@ Repo: `triplet-07` (Guardian layer). Owner: Nour Ben Jemaa (Member 2). Written 3
   - Remove `SecurityConfig` (`api_auth_secret`, `valid_tokens`, `token_max_age_seconds`).
   - Add `security: SecuritySettings` built with `SecuritySettings.from_env()` (from `guardian.security.gate`).
   - Add `ContractConfig` read from the environment with the handoff section 9 names and defaults: `GUARDIAN_LLM_PROVIDER=ollama`, `GUARDIAN_LLM_URL=http://localhost:11434`, `GUARDIAN_LLM_MODEL`, `GUARDIAN_EMBED_MODEL=nomic-embed-text`, `GUARDIAN_LLM_TIMEOUT_SECONDS=60`, `GUARDIAN_LLM_NUM_CTX=2048`, `GUARDIAN_LLM_NUM_GPU=-1` (−1 = Ollama default, 0 = CPU only), `GUARDIAN_PROFILE_DIR=data/profiles`, `GUARDIAN_ONBOARDING_BUFFER=20`, `GUARDIAN_ONBOARDING_TIMEOUT_SECONDS=120`, `GUARDIAN_PROBATION_MESSAGES=20`.
-  - Replace the module-level `settings = Settings()` with `Settings.load()` so importing `guardian.config` never requires secrets; `main.create_app()` calls `load()`.
+  - Replace the module-level `settings = Settings()` with `Settings.load()` so importing `guardian.config` never requires secrets; `main.create_app()` calls `load()`. **Amendment (3 Nov):** `config.py` must not instantiate `Settings()` at import time at all; the only constructor path is `Settings.load()`, called from `create_app`. Anything that used the module-level `settings` imports `Settings` and calls `load()` inside a function (done in P3.4).
+  - **Amendment (3 Nov):** add `GUARDIAN_ONBOARDING_MIN_PROPOSERS` (default `2`) to `ContractConfig` and `GUARDIAN_FORWARD_TO_BRAIN` (default `true`) to `PartnerConfig`; both also go into `.env.example` with one comment each.
   - `config.example.yaml`: delete `security.valid_tokens` and `security.token_header`.
   - `.env.example`: append the `GUARDIAN_LLM_*`, `GUARDIAN_EMBED_MODEL`, `GUARDIAN_PROFILE_DIR`, `GUARDIAN_ONBOARDING_*`, `GUARDIAN_PROBATION_MESSAGES` lines with the defaults above and one comment each.
   - `/docker-compose.yml`: remove the inline `API_AUTH_SECRET`; add `env_file: ./guardian/.env` to `guardian`; set `GUARDIAN_LLM_URL=http://host.docker.internal:11434` and `extra_hosts: ["host.docker.internal:host-gateway"]`; change the mock commands to `python -m mocks.mock_twin` / `python -m mocks.mock_brain`; add an optional service under `profiles: ["ollama"]` with `image: ollama/ollama:0.40.14` (same version as the laptop; confirm the tag pulls) and volume `ollama-models:/root/.ollama`. This file is shared by the triplet: tell the team before merging.
@@ -149,7 +150,8 @@ Repo: `triplet-07` (Guardian layer). Owner: Nour Ben Jemaa (Member 2). Written 3
   5. If every model fails: `ollama rm qwen2.5:3b && ollama pull qwen2.5:3b` (rules out a bad blob), then stop and report the log lines from step 1.
   6. Embeddings: `curl http://localhost:11434/api/embed -d "{\"model\":\"nomic-embed-text\",\"input\":\"water level\"}"` → one vector of 768 numbers.
 - **Why:** the LLM proposer is worthless if the model cannot load on the demo laptop; the chosen model and options go into configuration, not code.
-- **Verify:** step 3 (or 4) returns `{"message":{"content":"{\"ok\": true}"...}`; step 6 returns `embeddings`; `.env` has `GUARDIAN_LLM_MODEL` and, if needed, `GUARDIAN_LLM_NUM_GPU=0`. Record the model, options and response time in the Checkpoint 1 report.
+  7. **Amendment (3 Nov), deliverable:** `scripts/setup-ollama.ps1` and `scripts/setup-ollama.sh`. Each checks `ollama --version`, reads `GUARDIAN_LLM_MODEL` and `GUARDIAN_EMBED_MODEL` from `guardian/.env` (falling back to `.env.example`), runs `ollama pull` for each, prints the `/api/tags` model names, and exits 1 with a clear message when Ollama is not reachable. No other side effects; nothing from Ollama (installer, models, `.ollama/`) enters the repository.
+- **Verify:** step 3 (or 4) returns `{"message":{"content":"{\"ok\": true}"...}`; step 6 returns `embeddings`; `.env` has `GUARDIAN_LLM_MODEL` and, if needed, `GUARDIAN_LLM_NUM_GPU=0`; `scripts/setup-ollama.ps1` exits 0. Record the model, options and response time in the Checkpoint 1 report.
 
 **Checkpoint 1:** `ruff check` clean, `pytest -q` → 154 passed, mocks print `--help`, Ollama answers a JSON-schema chat request and an embed request with the values now in `.env`. Stubs in `main.py` are still active (by design until 2.4).
 
@@ -205,7 +207,8 @@ Repo: `triplet-07` (Guardian layer). Owner: Nour Ben Jemaa (Member 2). Written 3
     4. Outbound to the Brain: build a `TrustVerdictMessage` payload, wrap it in an envelope with `source {layer: guardian}`, `type: trust_verdict`, sign with `gate.sign_outbound`, send through the output adapter.
     5. Delete the `event_id` generation and the `token` handling.
   - `main.py`: add `create_app(settings: Settings | None = None) -> FastAPI` that loads settings, builds `SecurityGate(settings.security)`, `ProfileRegistry(Path("config/profiles"), settings.contract.profile_dir)`, `ContractRouter`, the core objects and the pipeline, registers routes and returns the app. Delete the three `try/except ImportError` stubs. Module-level `app` is created lazily (`__getattr__`) like the legacy module did, so importing `guardian.main` needs no keys. The telemetry route reads `await request.body()` and maps `SecurityRejection` / `MappingError` to `JSONResponse(exc.http_status, exc.to_public_dict())`.
-  - Keep `/health` and `/ws/timeline` as they are.
+  - Keep `/ws/timeline` as it is. **Amendment (3 Nov):** `/health` additionally returns `"llm": "reachable" | "unreachable" | "disabled"`: a `GET /api/tags` against `settings.contract.llm_url` with a 2-second timeout, result cached for 30 s; `"disabled"` when `GUARDIAN_LLM_PROVIDER` is empty or `none`.
+  - **Amendment (3 Nov):** `GUARDIAN_FORWARD_TO_BRAIN` (default `true`). When `false`, verdicts are not pushed; they are stored and served by `GET /api/v1/verdicts/{event_id}`. This keeps the observer-vs-gatekeeper decision a configuration switch (handoff §4, E1).
   - `tests/support.py`: `make_client(gate=None, registry=None)` returns `TestClient(create_app(...))` with fake keys and a fake clock.
 - **Why:** this is the move: the live path now runs security → contract adapter → core. Before this step the adapter is unused code.
 - **Verify:**
@@ -263,7 +266,7 @@ Repo: `triplet-07` (Guardian layer). Owner: Nour Ben Jemaa (Member 2). Written 3
 - **Files:** `gates.py` (new), `config/contract/plausibility.yaml` (new: `water_level: {min: 0, max: 1000, unit: cm}`, placeholders for the other metrics marked `# PENDING team`), `tests/unit/contract/test_gates.py`.
 - **Change:** `GateResult(name, passed, reason)`; `run_gates(proposals, description, samples, plausibility) -> tuple[MappingProfile | None, list[GateResult]]`:
   1. structural: `load_profile` + path existence (reuse 3.2's `validate_against`).
-  2. consensus: `batch_path`, `sensor_id_path`, `timestamp_path`, `twin_id_path`, `event_kind` must be equal across at least two proposers (if only one proposer answered, the gate fails with `single_proposer`). Other fields come from the first passing proposal in order `[heuristic, embedding, llm]`.
+  2. consensus: `batch_path`, `sensor_id_path`, `timestamp_path`, `twin_id_path`, `event_kind` must be equal across at least `GUARDIAN_ONBOARDING_MIN_PROPOSERS` proposers (default 2). If fewer proposers answered than required, the gate fails with `single_proposer`. **Amendment (3 Nov):** with `GUARDIAN_ONBOARDING_MIN_PROPOSERS=1` a single proposer passes the gate, and the record then stores `gate_results.consensus = "degraded"` so the audit trail shows that no second opinion was obtained. Other fields come from the first passing proposal in order `[heuristic, embedding, llm]`.
   3. dry run: every sample maps.
   4. plausibility: numeric where required, unit known, value inside the metric's range, `occurred_at` within `max_age_seconds + 60` of the envelope timestamp.
 - **Verify:** tests: two agreeing proposals pass; disagreement on `timestamp_path` fails gate 2; implausible value (1e9 cm) fails gate 4; a profile whose dry run raises fails gate 3; results list names the failing gate.
@@ -325,7 +328,7 @@ Repo: `triplet-07` (Guardian layer). Owner: Nour Ben Jemaa (Member 2). Written 3
 ### 4.4 Demo readiness
 
 - **Change:** nothing in code. Run on the demo laptop, on the team hotspot:
-  1. `ollama list` shows the chosen model and `nomic-embed-text`; `ollama_check` exits 0 (no venue download needed).
+  1. `ollama list` shows the chosen model and `nomic-embed-text`; `ollama_check` exits 0 (no venue download needed). **Amendment (3 Nov):** warm the model once before the slot (`ollama run <model> "hi"`) so the first onboarding request does not pay the model load time.
   2. `docker compose up guardian brain-mock` (or native `uvicorn`), then the Checkpoint 2 mock runs and the 4.1 scenario.
   3. Pull the network cable or hotspot mid-scenario and confirm Guardian keeps serving known profiles (onboarding degrades to `UNMAPPABLE` after the timeout, nothing crashes).
 - **Verify:** all three steps pass twice in a row; the logs are committed under `logs/`.

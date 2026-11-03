@@ -6,3 +6,11 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 .python-version
+
+# Runtime state and binaries (never committed)
+guardian/data/
+*.exe
+*.msi
+*.gguf
+.ollama/
+guardian/logs/*.tmp
