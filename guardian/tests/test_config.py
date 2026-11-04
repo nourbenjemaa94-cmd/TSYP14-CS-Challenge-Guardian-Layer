@@ -139,6 +139,22 @@ def test_load_without_dotenv_or_keys_fails_closed(tmp_path, monkeypatch: pytest.
         Settings.load()
 
 
+def test_mqtt_default_port_matches_tls_default():
+    settings = Settings.load(environ=HMAC_ENV)
+
+    assert settings.partners.twin.mqtt.tls_enabled is True
+    assert settings.partners.twin.mqtt.port == 8883
+
+
+def test_example_yaml_mqtt_port_matches_tls_default():
+    path = Path(__file__).resolve().parents[1] / "config.example.yaml"
+
+    settings = Settings.load(path, environ=HMAC_ENV)
+
+    assert settings.partners.twin.mqtt.tls_enabled is True
+    assert settings.partners.twin.mqtt.port == 8883
+
+
 def test_trust_section_reaches_the_trust_assessor(tmp_path, monkeypatch: pytest.MonkeyPatch):
     from guardian import main
     from guardian.core.trust_assessor import TrustAssessor, TrustConfig

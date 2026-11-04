@@ -71,7 +71,9 @@ class ServerConfig(BaseModel):
 class MqttConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
     host: str = "localhost"
-    port: int = Field(default=1883, ge=1, le=65535)
+    # 8883 is the IANA MQTT-over-TLS port, matching tls_enabled=True below and
+    # MqttAdapter's own default; a plaintext broker is 1883 with tls_enabled=false.
+    port: int = Field(default=8883, ge=1, le=65535)
     topic: str = "sensors/telemetry/raw"
     tls_enabled: bool = True
     ca_cert: str | None = None

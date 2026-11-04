@@ -17,7 +17,10 @@ partners:
     identity: "twin:S01"
     mqtt:
       host: "localhost"
-      port: 1883
+      # 8883 is MQTT over TLS and matches tls_enabled: true. A partner broker may
+      # use another TLS port; MQTT_PORT overrides. Plaintext example:
+      # port: 1883 with tls_enabled: false (local brokers only).
+      port: 8883
       topic: "sensors/telemetry/raw"
       tls_enabled: true
       # Keep certificate paths outside this file when they are sensitive.
