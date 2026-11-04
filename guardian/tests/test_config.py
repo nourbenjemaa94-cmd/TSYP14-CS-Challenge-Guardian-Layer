@@ -139,6 +139,60 @@ def test_load_without_dotenv_or_keys_fails_closed(tmp_path, monkeypatch: pytest.
         Settings.load()
 
 
+def test_trust_section_reaches_the_trust_assessor(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    from guardian import main
+    from guardian.core.trust_assessor import TrustAssessor, TrustConfig
+
+    path = write_config(tmp_path, "trust:\n  isolate_threshold: 0.15\n  quarantine_threshold: 0.5\n")
+
+    settings = Settings.load(path, environ=HMAC_ENV)
+    assert settings.trust.isolate_threshold == 0.15
+    assert settings.trust.quarantine_threshold == 0.5
+
+    built = TrustConfig.from_mapping(settings.trust.model_dump())
+    assert built.untrusted_below == 0.15
+    assert built.suspicious_below == 0.5
+    assert built.recovery_clean_readings == 3
+
+    for name, value in HMAC_ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("GUARDIAN_CONFIG", str(path))
+    previous_pipeline, previous_signer = main._pipeline, main._outbound_signer
+    main._pipeline = None
+    main._outbound_signer = None
+    try:
+        pipeline = main._default_pipeline()
+        assert isinstance(pipeline.assessor, TrustAssessor)
+        assert pipeline.assessor.config.untrusted_below == 0.15
+    finally:
+        main._pipeline, main._outbound_signer = previous_pipeline, previous_signer
+
+
+def test_unknown_trust_key_is_a_startup_error(tmp_path):
+    path = write_config(tmp_path, "trust:\n  initial_score: 1.0\n")
+
+    with pytest.raises(SecurityConfigurationError, match="trust.initial_score"):
+        Settings.load(path, environ=HMAC_ENV)
+
+
+def test_inverted_trust_thresholds_are_rejected(tmp_path):
+    path = write_config(tmp_path, "trust:\n  isolate_threshold: 0.8\n  quarantine_threshold: 0.5\n")
+
+    with pytest.raises(SecurityConfigurationError, match="isolate_threshold"):
+        Settings.load(path, environ=HMAC_ENV)
+
+
+def test_audit_log_directory_maps_to_log_dir_unless_overridden(tmp_path):
+    path = write_config(tmp_path, "audit:\n  log_directory: /var/log/guardian\n  sqlite_path: reserved.db\n")
+
+    assert Settings.load(path, environ=HMAC_ENV).log_dir == "/var/log/guardian"
+    assert Settings.load(path, environ={**HMAC_ENV, "AUDIT_LOG_DIR": "/tmp/audit"}).log_dir == "/tmp/audit"
+
+    unknown = write_config(tmp_path, "audit:\n  retention_days: 7\n")
+    with pytest.raises(SecurityConfigurationError, match="audit.retention_days"):
+        Settings.load(unknown, environ=HMAC_ENV)
+
+
 def test_security_environment_tunables_override_public_yaml():
     path = Path(__file__).resolve().parents[1] / "config.example.yaml"
 

@@ -179,6 +179,36 @@ class DetectionConfig(BaseModel):
     trust_threshold_suspicious: float = Field(default=0.7, ge=0, le=1)
 
 
+class TrustSettings(BaseModel):
+    """Trust policy handed to ``TrustConfig.from_mapping``.
+
+    Only keys the Core consumes are accepted; an unknown key is a startup
+    error rather than a silently ignored setting (QA finding CFG-02).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    isolate_threshold: float = Field(default=0.4, ge=0, le=1)
+    quarantine_threshold: float = Field(default=0.7, ge=0, le=1)
+    recovery_clean_readings: int = Field(default=3, ge=0)
+    full_confidence_readings: int = Field(default=10, ge=1)
+    policy_version: str = "1.0"
+
+    @model_validator(mode="after")
+    def thresholds_are_ordered(self) -> TrustSettings:
+        if self.isolate_threshold > self.quarantine_threshold:
+            raise ValueError("isolate_threshold must not exceed quarantine_threshold")
+        return self
+
+
+class AuditSettings(BaseModel):
+    """Audit section. ``sqlite_path`` is reserved: accepted, not yet consumed."""
+
+    model_config = ConfigDict(extra="forbid")
+    timeline_channel: str = "/ws/timeline"
+    log_directory: str | None = None
+    sqlite_path: str | None = None
+
+
 class PublicSecurityConfig(BaseModel):
     """Non-secret security policy read from YAML.
 
@@ -209,6 +239,8 @@ class Settings(BaseModel):
     adapters: AdapterConfig = Field(default_factory=AdapterConfig)
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
     contract: ContractConfig = Field(default_factory=ContractConfig)
+    trust: TrustSettings = Field(default_factory=TrustSettings)
+    audit: AuditSettings = Field(default_factory=AuditSettings)
     log_dir: str = "../logs"
     security: PublicSecurityConfig = Field(default_factory=PublicSecurityConfig)
 
@@ -224,6 +256,10 @@ class Settings(BaseModel):
         except ValidationError as exc:
             detail = "; ".join(f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in exc.errors())
             raise SecurityConfigurationError(f"Guardian cannot start: invalid configuration: {detail}") from None
+        # audit.log_directory is the YAML spelling of log_dir; AUDIT_LOG_DIR and a
+        # top-level log_dir keep precedence over it.
+        if settings.audit.log_directory and "log_dir" not in merged:
+            settings.log_dir = settings.audit.log_directory
         runtime_env = dict(env)
         cls._apply_yaml_security_overrides(runtime_env, settings.security)
         settings.security = SecuritySettings.from_env(environ=runtime_env)

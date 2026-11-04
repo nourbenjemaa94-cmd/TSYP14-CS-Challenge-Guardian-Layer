@@ -31,7 +31,7 @@ from guardian.config import Settings
 from guardian.core.anomaly_detector import AnomalyDetector
 from guardian.core.containment import ContainmentEngine
 from guardian.core.history import HistoryTracker
-from guardian.core.trust_assessor import TrustAssessor
+from guardian.core.trust_assessor import TrustAssessor, TrustConfig
 from guardian.orchestration.legacy_outbound import OutboundSigner
 from guardian.orchestration.pipeline import GuardianPipeline
 from guardian.security.errors import ReasonCode, SecurityConfigurationError, SecurityRejection
@@ -215,7 +215,10 @@ def _default_pipeline() -> GuardianPipeline:
                 water_spike_threshold_cm=loaded.detection.flood_water_spike_cm,
                 history=core_history,
             ),
-            trust_assessor=TrustAssessor(history=core_history),
+            trust_assessor=TrustAssessor(
+                config=TrustConfig.from_mapping(loaded.trust.model_dump()),
+                history=core_history,
+            ),
             containment=ContainmentEngine(history=core_history),
             output_adapter=RestBrainOutputAdapter(
                 endpoint_url=loaded.partners.city_brain_url,
