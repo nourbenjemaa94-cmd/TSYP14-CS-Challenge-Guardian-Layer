@@ -440,6 +440,11 @@ def _resolve_env(environ: Mapping[str, str] | None, dotenv_path: Path | None) ->
     return merged
 
 
+def read_dotenv(path: Path) -> dict[str, str]:
+    """Parse a ``.env`` file into a mapping. Values are returned, never logged."""
+    return _parse_dotenv(path)
+
+
 def _parse_dotenv(path: Path) -> dict[str, str]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()

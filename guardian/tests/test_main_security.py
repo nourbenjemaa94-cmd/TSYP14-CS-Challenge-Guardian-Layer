@@ -147,7 +147,8 @@ def test_transport_context_rejects_protocol_outside_adapter_registry() -> None:
         TransportContext(transport="smtp")  # type: ignore[arg-type]
 
 
-def test_missing_hmac_keys_prevent_activation_and_readiness(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_hmac_keys_prevent_activation_and_readiness(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)  # no developer .env in the working directory
     for name in KEYS:
         monkeypatch.delenv(name, raising=False)
 
@@ -160,7 +161,8 @@ def test_missing_hmac_keys_prevent_activation_and_readiness(monkeypatch: pytest.
     assert asyncio.run(main.health_check())["status"] == "ALIVE"
 
 
-def test_http_refuses_messages_when_pipeline_is_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_http_refuses_messages_when_pipeline_is_not_ready(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)  # no developer .env in the working directory
     for name in KEYS:
         monkeypatch.delenv(name, raising=False)
 

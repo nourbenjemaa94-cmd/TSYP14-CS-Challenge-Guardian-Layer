@@ -109,6 +109,36 @@ def test_example_yaml_without_runtime_hmac_keys_fails_closed():
         Settings.load(path, environ={})
 
 
+def test_load_reads_private_dotenv_from_working_directory(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """Native runs keep keys in ./.env; the process environment still wins."""
+    for name in HMAC_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("GUARDIAN_CONFIG", raising=False)
+    monkeypatch.delenv("GUARDIAN_PORT", raising=False)
+    (tmp_path / ".env").write_text(
+        "\n".join([f"{name}={value}" for name, value in HMAC_ENV.items()] + ["GUARDIAN_PORT=8010"]) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    settings = Settings.load()
+    assert settings.security.hmac_key_twin == HMAC_ENV["GUARDIAN_HMAC_KEY_TWIN"]
+    assert settings.server.port == 8010
+
+    monkeypatch.setenv("GUARDIAN_PORT", "8011")
+    assert Settings.load().server.port == 8011
+
+
+def test_load_without_dotenv_or_keys_fails_closed(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    for name in HMAC_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("GUARDIAN_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SecurityConfigurationError, match="GUARDIAN_HMAC_KEY_TWIN"):
+        Settings.load()
+
+
 def test_security_environment_tunables_override_public_yaml():
     path = Path(__file__).resolve().parents[1] / "config.example.yaml"
 

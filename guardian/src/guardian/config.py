@@ -13,7 +13,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from guardian.security.errors import SecurityConfigurationError
-from guardian.security.gate import SecuritySettings
+from guardian.security.gate import SecuritySettings, read_dotenv
 
 
 def _env_value(environ: Mapping[str, str], *names: str) -> str | None:
@@ -29,6 +29,20 @@ def _override(data: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
     for part in path[:-1]:
         current = current.setdefault(part, {})
     current[path[-1]] = value
+
+
+def _process_environment() -> dict[str, str]:
+    """Process environment layered over ``./.env``.
+
+    Mirrors the precedence ``SecuritySettings.from_env`` applies when it is
+    called without an explicit mapping: a private ``.env`` in the working
+    directory supplies defaults, and real environment variables win. Values
+    are never logged.
+    """
+    dotenv = Path.cwd() / ".env"
+    merged: dict[str, str] = read_dotenv(dotenv) if dotenv.is_file() else {}
+    merged.update(os.environ)
+    return merged
 
 
 def _env_bool(value: str) -> bool:
@@ -193,7 +207,7 @@ class Settings(BaseModel):
 
     @classmethod
     def load(cls, path: str | Path | None = None, *, environ: Mapping[str, str] | None = None) -> Settings:
-        env = os.environ if environ is None else environ
+        env = _process_environment() if environ is None else environ
         selected = Path(path) if path is not None else Path(env.get("GUARDIAN_CONFIG", "guardian/config.yaml"))
         raw = cls._read_yaml(selected, required=path is not None or bool(env.get("GUARDIAN_CONFIG")))
         merged = copy.deepcopy(raw)

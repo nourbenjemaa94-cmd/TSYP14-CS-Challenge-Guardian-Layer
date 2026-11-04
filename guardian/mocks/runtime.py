@@ -11,7 +11,7 @@ from typing import Any, Protocol
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-if str(SRC) not in sys.path:
+if str(SRC) not in sys.path:  # kept for direct imports; mocks/__init__.py does this for `python -m`
     sys.path.insert(0, str(SRC))
 
 from guardian.security.freshness import format_timestamp  # noqa: E402

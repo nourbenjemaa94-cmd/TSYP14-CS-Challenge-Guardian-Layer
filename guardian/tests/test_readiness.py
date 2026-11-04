@@ -38,7 +38,8 @@ def set_keys(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(name, value)
 
 
-def test_health_is_liveness_but_missing_keys_make_readiness_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_is_liveness_but_missing_keys_make_readiness_fail(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)  # no developer .env in the working directory
     for name in KEYS:
         monkeypatch.delenv(name, raising=False)
 

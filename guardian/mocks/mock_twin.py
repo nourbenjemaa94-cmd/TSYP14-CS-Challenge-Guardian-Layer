@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from guardian.security.freshness import format_timestamp
 from mocks.runtime import ROOT, Poster, actual_code, httpx_poster, write_log
 
 READING_PATH = "/api/v1/telemetry"
+FLOOD_WAVES = 3
 TWIN_ALT_PAYLOAD = {"levelOfWater": 1.8, "unitOfMeasure": "m", "gauge": "S01"}
 
 MODES = (
@@ -157,18 +159,32 @@ def _flood(
     burst: int,
     flood_threshold: int,
 ) -> tuple[int, dict[str, Any], str]:
-    total = burst + flood_threshold
-    status = 0
-    body: dict[str, Any] = {}
-    event_id = "evt-flood-0"
-    for index in range(total):
-        payload, event_id = _signed_reading(
-            twin_key,
-            now,
-            seq=index,
-            event_id=f"evt-flood-{index}",
-        )
-        status, body = post(path, payload)
+    """Send waves of ``burst + flood_threshold`` concurrent readings, as a flooding device would.
+
+    Posts inside a wave are concurrent: sent one after another they would
+    arrive slower than the token bucket refills and nothing would be limited.
+    One wave drains the bucket only when Guardian answers instantly; the bucket
+    refills during the wave at ``rate_per_source``, so up to ``FLOOD_WAVES``
+    waves are sent and the scenario stops at the first ``RATE_LIMITED``.
+    Sequence gaps caused by out-of-order arrival are non-fatal warnings on
+    Guardian's side. The reported outcome is the first ``RATE_LIMITED``
+    response when there is one, otherwise the response to the last reading.
+    """
+    wave_size = burst + flood_threshold
+    status, body, event_id = 0, {}, "evt-flood-0"
+    for wave in range(FLOOD_WAVES):
+        offset = wave * wave_size
+        readings = [
+            _signed_reading(twin_key, now, seq=index, event_id=f"evt-flood-{index}")
+            for index in range(offset, offset + wave_size)
+        ]
+        with ThreadPoolExecutor(max_workers=min(wave_size, 32)) as pool:
+            results = list(pool.map(lambda reading: post(path, reading[0]), readings))
+        for (status, body), (_payload, event_id) in zip(results, readings, strict=True):
+            if actual_code(status, body) == "RATE_LIMITED":
+                return status, body, event_id
+        status, body = results[-1]
+        event_id = readings[-1][1]
     return status, body, event_id
 
 
