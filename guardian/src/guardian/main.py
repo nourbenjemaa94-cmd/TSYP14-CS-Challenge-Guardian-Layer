@@ -37,6 +37,40 @@ from guardian.orchestration.pipeline import GuardianPipeline
 from guardian.security.errors import ReasonCode, SecurityConfigurationError, SecurityRejection
 from guardian.security.gate import SecurityGate
 
+
+def _public_yaml_server_section() -> dict[str, Any]:
+    """Read the non-secret ``server`` section of the YAML file, if any."""
+    path = Path(os.getenv("GUARDIAN_CONFIG", "guardian/config.yaml"))
+    try:
+        raw = Settings._read_yaml(path, required=False)
+    except SecurityConfigurationError:
+        return {}
+    server = raw.get("server")
+    return server if isinstance(server, dict) else {}
+
+
+def _cors_origins() -> list[str]:
+    """Configured CORS origins: ``GUARDIAN_CORS_ORIGINS`` (comma list), else YAML ``server.cors_origins``."""
+    explicit = os.getenv("GUARDIAN_CORS_ORIGINS")
+    if explicit is not None and explicit.strip():
+        return [item.strip() for item in explicit.split(",") if item.strip()]
+    configured = _public_yaml_server_section().get("cors_origins")
+    if isinstance(configured, list) and all(isinstance(item, str) and item.strip() for item in configured):
+        return [item.strip() for item in configured]
+    return ["*"]
+
+
+def _cors_middleware_options() -> dict[str, Any]:
+    """CORS settings; credentials are never combined with a wildcard origin."""
+    origins = _cors_origins()
+    return {
+        "allow_origins": origins,
+        "allow_credentials": "*" not in origins,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+
+
 # Initialize application
 app = FastAPI(
     title="Guardian Security Gateway",
@@ -44,14 +78,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS Middleware (origins from configuration, see _cors_origins)
+app.add_middleware(CORSMiddleware, **_cors_middleware_options())
 
 logger = get_audit_logger("guardian.main")
 
@@ -147,13 +175,7 @@ def _timeline_mode() -> str:
     explicit = os.getenv("GUARDIAN_TIMELINE_MODE")
     if explicit:
         return explicit.strip().lower()
-    path = Path(os.getenv("GUARDIAN_CONFIG", "guardian/config.yaml"))
-    try:
-        raw = Settings._read_yaml(path, required=False)
-    except SecurityConfigurationError:
-        return "disabled"
-    server = raw.get("server") if isinstance(raw.get("server"), dict) else {}
-    return str(server.get("timeline_mode", "disabled")).strip().lower()
+    return str(_public_yaml_server_section().get("timeline_mode", "disabled")).strip().lower()
 
 
 def _default_pipeline() -> GuardianPipeline:

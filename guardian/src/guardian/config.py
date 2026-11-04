@@ -45,6 +45,13 @@ def _process_environment() -> dict[str, str]:
     return merged
 
 
+def _env_list(value: str) -> list[str]:
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    if not items:
+        raise ValueError("must list at least one value")
+    return items
+
+
 def _env_bool(value: str) -> bool:
     if value.lower() not in {"true", "false", "1", "0", "yes", "no"}:
         raise ValueError("must be a boolean")
@@ -270,6 +277,7 @@ class Settings(BaseModel):
             (("server", "port"), ("GUARDIAN_PORT",), int),
             (("server", "debug"), ("DEBUG",), _env_bool),
             (("server", "timeline_mode"), ("GUARDIAN_TIMELINE_MODE",), str),
+            (("server", "cors_origins"), ("GUARDIAN_CORS_ORIGINS",), _env_list),
             (("partners", "brain", "endpoint"), ("CITY_BRAIN_URL",), str),
             (("partners", "brain", "timeout_seconds"), ("CITY_BRAIN_TIMEOUT_SECONDS",), float),
             (("partners", "brain", "retry_count"), ("CITY_BRAIN_MAX_RETRIES",), int),

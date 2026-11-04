@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 from guardian import main
@@ -16,6 +18,7 @@ from guardian.adapters.contract.errors import MappingErrorCode
 from guardian.adapters.contract.mapper import GenericMapper
 from guardian.adapters.contract.production import production_profiles
 from guardian.adapters.contract.profile import MappingProfile
+from guardian.config import Settings
 from guardian.core.anomaly_detector import AnomalyDetector
 from guardian.core.containment import ContainmentEngine
 from guardian.core.trust_assessor import TrustAssessor
@@ -363,3 +366,66 @@ def test_unknown_schema_is_publicly_rejected(http_client: TestClient) -> None:
     )
     assert response.status_code == 422
     assert response.json()["error"] == MappingErrorCode.UNKNOWN_SCHEMA.value
+
+
+def _cors_app() -> FastAPI:
+    """Fresh app wired exactly like ``main.app``'s CORS layer, built after env changes."""
+    application = FastAPI()
+    application.add_middleware(CORSMiddleware, **main._cors_middleware_options())
+
+    @application.post("/api/v1/telemetry")
+    async def telemetry() -> dict:
+        return {}
+
+    return application
+
+
+def _preflight(client: TestClient, origin: str):
+    return client.options(
+        "/api/v1/telemetry",
+        headers={"Origin": origin, "Access-Control-Request-Method": "POST"},
+    )
+
+
+def test_configured_cors_origins_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GUARDIAN_CORS_ORIGINS", "https://qa.example, https://ops.example")
+
+    client = TestClient(_cors_app())
+    allowed = _preflight(client, "https://qa.example")
+    refused = _preflight(client, "https://other.example")
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "https://qa.example"
+    assert allowed.headers.get("access-control-allow-credentials") == "true"
+    assert "access-control-allow-origin" not in refused.headers
+
+
+def test_cors_origins_come_from_yaml_when_env_is_unset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.delenv("GUARDIAN_CORS_ORIGINS", raising=False)
+    config_path = tmp_path / "cors.yaml"
+    config_path.write_text("server:\n  cors_origins: ['https://yaml.example']\n", encoding="utf-8")
+    monkeypatch.setenv("GUARDIAN_CONFIG", str(config_path))
+
+    assert main._cors_origins() == ["https://yaml.example"]
+    assert main._cors_middleware_options()["allow_credentials"] is True
+
+
+def test_wildcard_cors_default_never_allows_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.delenv("GUARDIAN_CORS_ORIGINS", raising=False)
+    monkeypatch.setenv("GUARDIAN_CONFIG", str(tmp_path / "absent.yaml"))
+
+    options = main._cors_middleware_options()
+    assert options["allow_origins"] == ["*"]
+    assert options["allow_credentials"] is False
+
+    client = TestClient(_cors_app())
+    response = _preflight(client, "https://anyone.example")
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_settings_load_parses_cors_origin_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings.load(
+        environ={**KEYS, "GUARDIAN_CORS_ORIGINS": "https://a.example,https://b.example"},
+    )
+    assert settings.server.cors_origins == ["https://a.example", "https://b.example"]
