@@ -186,6 +186,10 @@ def _signed_reading(
 ) -> tuple[bytes, str]:
     body: dict[str, Any] = {
         "schema_version": "1.0",
+        "schema_id": {
+            "sensor_reading": "twin-canonical-v1",
+            "sensor_reading_batch": "twin-canonical-batch-v1",
+        }.get(message_type, "unknown-schema"),
         "event_id": event_id,
         "seq": seq,
         "timestamp": timestamp or format_timestamp(now),
@@ -213,7 +217,12 @@ def main(argv: list[str] | None = None) -> int:
     if security is None:
         print("Guardian cannot start: security settings were not loaded.")
         return 2
-    base_url = args.base_url or os.getenv("GUARDIAN_BASE_URL", "http://127.0.0.1:8000")
+    base_url = (
+        args.base_url
+        or os.getenv("GUARDIAN_URL")
+        or os.getenv("GUARDIAN_BASE_URL")
+        or "http://127.0.0.1:8000"
+    )
     result = execute(
         args.mode,
         post=httpx_poster(base_url),

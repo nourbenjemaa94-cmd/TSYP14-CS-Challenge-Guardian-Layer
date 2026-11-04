@@ -54,7 +54,8 @@ def execute(
     if verified:
         tampered = copy.deepcopy(reply)
         payload = dict(tampered.get("payload") or {})
-        payload["verdict"] = "TRUSTED"
+        original_verdict = payload.get("verdict")
+        payload["verdict"] = "UNTRUSTED" if original_verdict == "TRUSTED" else "TRUSTED"
         tampered["payload"] = payload
         modified_rejected = not verify_signature(tampered, guardian_key)
     if verified and modified_rejected:
@@ -99,7 +100,12 @@ def main(argv: list[str] | None = None) -> int:
     if security is None:
         print("Guardian cannot start: security settings were not loaded.")
         return 2
-    base_url = args.base_url or os.getenv("GUARDIAN_BASE_URL", "http://127.0.0.1:8000")
+    base_url = (
+        args.base_url
+        or os.getenv("GUARDIAN_URL")
+        or os.getenv("GUARDIAN_BASE_URL")
+        or "http://127.0.0.1:8000"
+    )
     result = execute(
         post=httpx_poster(base_url),
         brain_key=security.hmac_key_brain,

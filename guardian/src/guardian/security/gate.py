@@ -182,6 +182,7 @@ class AdmittedMessage:
     authenticated_layer: str
     operation: str
     source_key: str
+    partner_identity: str
     event_id: str | None
 
 
@@ -194,6 +195,7 @@ class AcceptedMessage:
     authenticated_layer: str
     operation: str
     source_key: str
+    partner_identity: str
     event_id: str
 
 
@@ -207,9 +209,15 @@ class SecurityGate:
         clock: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
         max_sources: int = 10_000,
+        partner_identities: Mapping[str, str] | None = None,
     ) -> None:
         _ensure_safe(settings)
         self.settings = settings
+        configured_partners = dict(partner_identities or {})
+        self.partner_identities = {
+            layer: configured_partners.get(layer, f"partner:{layer}")
+            for layer in ("twin", "brain", "guardian")
+        }
         self.clock = clock or (lambda: datetime.now(UTC))
         mono = monotonic or _import_monotonic()
         self._limiter = RateLimiter(
@@ -251,6 +259,7 @@ class SecurityGate:
             authenticated_layer=layer,
             operation=operation,
             source_key=source_key,
+            partner_identity=self.partner_identities[layer],
             event_id=event_id,
         )
 
@@ -306,6 +315,7 @@ class SecurityGate:
             authenticated_layer=admitted.authenticated_layer,
             operation=admitted.operation,
             source_key=source_key,
+            partner_identity=admitted.partner_identity,
             event_id=envelope.event_id,
         )
 

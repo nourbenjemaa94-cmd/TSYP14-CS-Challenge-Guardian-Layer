@@ -14,13 +14,25 @@ services:
       - GUARDIAN_ENV=production
       - GUARDIAN_HOST=0.0.0.0
       - GUARDIAN_PORT=8000
-      - CITY_BRAIN_URL=http://city-brain:8002/api/v1/brain/ingest
+      - GUARDIAN_TIMELINE_MODE=disabled
+      - GUARDIAN_PROFILE_DIR=/app/data/profiles
+      - CITY_BRAIN_URL=http://brain-http-mock:8002/api/v1/brain/ingest
       - GUARDIAN_LLM_URL=http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./logs:/app/logs
+      # Persistent validated profile records only; never mount private keys here.
+      - guardian-profiles:/app/data/profiles
+      # Optional operator-provided TLS material; never copied into the image.
+      - ./guardian/certs:/run/secrets/certs:ro
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     networks:
       - triplet-net
 
@@ -29,24 +41,35 @@ services:
       context: ./guardian
       dockerfile: Dockerfile
     container_name: twin-mock-node
-    command: python -m mocks.mock_twin
+    command: ["python", "-m", "mocks.mock_twin", "--mode", "normal"]
+    env_file:
+      - ./guardian/.env
     environment:
-      - GUARDIAN_URL=http://guardian:8000/api/v1/telemetry
+      - GUARDIAN_URL=http://guardian:8000
     depends_on:
-      - guardian
+      guardian:
+        condition: service_healthy
     networks:
       - triplet-net
 
-  brain-mock:
+  brain-http-mock:
     build:
       context: ./guardian
       dockerfile: Dockerfile
-    container_name: brain-mock-node
-    command: python -m mocks.mock_brain
+    container_name: brain-http-mock-node
+    command: ["python", "-m", "mocks.mock_brain_server"]
+    env_file:
+      - ./guardian/.env
     ports:
       - "8002:8002"
     environment:
       - BRAIN_PORT=8002
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
     networks:
       - triplet-net
 
@@ -61,4 +84,6 @@ networks:
     driver: bridge
 
 volumes:
+  guardian-profiles:
+    name: guardian-profiles
   ollama-models:

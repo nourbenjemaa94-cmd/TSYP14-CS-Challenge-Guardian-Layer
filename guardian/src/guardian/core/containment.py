@@ -105,6 +105,7 @@ class ContainmentEngine:
         self._states: dict[str, str] = {}
         self._counts: dict[str, tuple[str, int]] = {}
         self._remote_pending: set = set()
+        self._idempotency_keys: dict[tuple[str, str, str], str] = {}
         self._reports: OrderedDict[str, ContainmentReport] = OrderedDict()
         self._sequence = 0
 
@@ -154,15 +155,19 @@ class ContainmentEngine:
 
     def isolate(self, sensor_id: str, reason: str = "MANUAL", event_id: str = "") -> ContainmentAction:
         before = self.state(sensor_id)
-        self._states[sensor_id] = ISOLATED
-        action_id, key = self._new_id(ISOLATE, sensor_id)
+        action_id, key = self._new_id(ISOLATE, sensor_id, event_id)
         outcome = self._call_port("isolate_device", sensor_id, key)
-        if outcome is None or outcome[2]:
+        # The local state represents confirmed remote containment.  The
+        # decision to block forwarding is carried by the action/report and is
+        # deliberately independent from this state transition.
+        if outcome is not None and outcome[2]:
+            self._states[sensor_id] = ISOLATED
             self._remote_pending.discard(sensor_id)
-        else:
+        elif outcome is not None:
             self._remote_pending.add(sensor_id)
         return self._build(action_id, ISOLATE, sensor_id, event_id, reason, key, outcome,
-                           {"device_state": {"before": before, "after": ISOLATED}})
+                           {"device_state": {"before": before,
+                                              "after": ISOLATED if outcome is not None and outcome[2] else before}})
 
     def quarantine(self, sensor_id: str, reason: str = "MANUAL", event_id: str = "") -> ContainmentAction:
         before = self.state(sensor_id)
@@ -236,10 +241,17 @@ class ContainmentEngine:
         self._counts[sensor_id] = (verdict, count)
         return count
 
-    def _new_id(self, kind: str, target: str) -> tuple[str, str]:
+    def _new_id(self, kind: str, target: str, logical_id: str = "") -> tuple[str, str]:
         self._sequence += 1
         action_id = f"CA-{self._sequence:06d}"
-        return action_id, f"guardian:{kind.lower()}:{target}:{action_id}"
+        identity = (kind, target, logical_id) if logical_id else None
+        if identity is not None and identity in self._idempotency_keys:
+            key = self._idempotency_keys[identity]
+        else:
+            key = f"guardian:{kind.lower()}:{target}:{action_id}"
+            if identity is not None:
+                self._idempotency_keys[identity] = key
+        return action_id, key
 
     def _call_port(self, method: str, target: str, key: str) -> tuple[bool, bool, bool, str] | None:
         if self.port is None:

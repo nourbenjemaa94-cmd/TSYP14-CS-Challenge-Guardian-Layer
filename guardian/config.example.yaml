@@ -5,24 +5,48 @@ server:
   port: 8000
   workers: 1
   cors_origins: ["*"]
+  # disabled by default; use local for loopback jury tooling or demo for an
+  # explicitly exposed demonstration endpoint.
+  timeline_mode: "disabled"
 
 partners:
   twin:
+    adapter: "rest"
     type: "rest"
     listen_path: "/api/v1/telemetry"
+    identity: "twin:S01"
     mqtt:
-      broker: "localhost"
+      host: "localhost"
       port: 1883
       topic: "sensors/telemetry/raw"
+      tls_enabled: true
+      # Keep certificate paths outside this file when they are sensitive.
+      ca_cert: null
+      client_cert: null
+      client_key: null
   brain:
+    adapter: "rest"
     type: "rest"
     endpoint: "http://localhost:8002/api/v1/brain/ingest"
-    timeout_seconds: 5.0
-    retry_count: 3
+    timeout_seconds: 10.0
+    retry_count: 0
+
+adapters:
+  twin: "rest"
+  brain: "rest"
+
+# Priority: explicit environment variables > this YAML file > safe defaults.
+# HMAC keys and other secrets must be supplied through environment variables or
+# the configured secrets mechanism; never place them in this YAML file.
 
 security:
   enabled: true
   freshness_window_seconds: 300
+  max_future_skew_seconds: 5
+  max_message_bytes: 65536
+  rate_per_source: 5
+  rate_burst: 20
+  flood_threshold: 10
   replay_cache_size: 10000
 
 detection:

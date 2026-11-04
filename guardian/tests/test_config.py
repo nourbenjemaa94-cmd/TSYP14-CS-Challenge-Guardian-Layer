@@ -1,0 +1,120 @@
+from pathlib import Path
+
+import pytest
+
+from guardian.config import Settings
+from guardian.security.errors import SecurityConfigurationError
+
+HMAC_ENV = {
+    "GUARDIAN_HMAC_KEY_TWIN": "t" * 32,
+    "GUARDIAN_HMAC_KEY_BRAIN": "b" * 32,
+    "GUARDIAN_HMAC_KEY_GUARDIAN": "g" * 32,
+}
+
+
+def write_config(tmp_path: Path, content: str) -> Path:
+    path = tmp_path / "guardian.yaml"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def test_yaml_server_port_certificates_and_brain_output(tmp_path):
+    path = write_config(tmp_path, """
+server:
+  host: 127.0.0.1
+  port: 9443
+partners:
+  twin:
+    adapter: mqtt
+    mqtt:
+      host: mqtt.internal
+      port: 8883
+      topic: twin/readings
+      tls_enabled: true
+      ca_cert: /run/secrets/ca.pem
+      client_cert: /run/secrets/client.pem
+      client_key: /run/secrets/client.key
+  brain:
+    adapter: rest
+    endpoint: https://brain.internal/ingest
+    timeout_seconds: 4.5
+    retry_count: 2
+adapters:
+  twin: mqtt
+  brain: rest
+""")
+
+    settings = Settings.load(path, environ=HMAC_ENV)
+
+    assert settings.server.port == 9443
+    assert settings.partners.twin.mqtt.port == 8883
+    assert settings.partners.twin.mqtt.ca_cert == "/run/secrets/ca.pem"
+    assert settings.partners.twin.mqtt.client_key == "/run/secrets/client.key"
+    assert settings.partners.brain.endpoint == "https://brain.internal/ingest"
+    assert settings.partners.brain.timeout_seconds == 4.5
+    assert settings.adapters.twin == "mqtt"
+
+
+def test_environment_overrides_yaml(tmp_path):
+    path = write_config(tmp_path, """
+server: {port: 8001}
+partners:
+  twin:
+    mqtt: {port: 1883}
+""")
+
+    settings = Settings.load(path, environ={**HMAC_ENV, "GUARDIAN_PORT": "9443", "MQTT_PORT": "9444"})
+
+    assert settings.server.port == 9443
+    assert settings.partners.twin.mqtt.port == 9444
+
+
+def test_missing_hmac_keys_are_critical(tmp_path):
+    path = write_config(tmp_path, "server: {port: 9443}\n")
+
+    with pytest.raises(SecurityConfigurationError, match="HMAC_KEY"):
+        Settings.load(path, environ={})
+
+
+@pytest.mark.parametrize("content", ["server: {port: 0}\n", "server: {port: 65536}\n"])
+def test_server_port_out_of_range_is_rejected(tmp_path, content):
+    path = write_config(tmp_path, content)
+
+    with pytest.raises(SecurityConfigurationError, match="server.port"):
+        Settings.load(path, environ=HMAC_ENV)
+
+
+def test_invalid_yaml_is_rejected(tmp_path):
+    path = write_config(tmp_path, "server: [unterminated\n")
+
+    with pytest.raises(SecurityConfigurationError, match="valid YAML"):
+        Settings.load(path, environ=HMAC_ENV)
+
+
+def test_example_yaml_loads_public_security_with_runtime_hmac_keys():
+    path = Path(__file__).resolve().parents[1] / "config.example.yaml"
+
+    settings = Settings.load(path, environ=HMAC_ENV)
+
+    assert settings.security.hmac_key_twin == HMAC_ENV["GUARDIAN_HMAC_KEY_TWIN"]
+    assert settings.security.hmac_key_brain == HMAC_ENV["GUARDIAN_HMAC_KEY_BRAIN"]
+    assert settings.security.hmac_key_guardian == HMAC_ENV["GUARDIAN_HMAC_KEY_GUARDIAN"]
+    assert settings.security.max_age_seconds == 300
+
+
+def test_example_yaml_without_runtime_hmac_keys_fails_closed():
+    path = Path(__file__).resolve().parents[1] / "config.example.yaml"
+
+    with pytest.raises(SecurityConfigurationError, match="GUARDIAN_HMAC_KEY_TWIN"):
+        Settings.load(path, environ={})
+
+
+def test_security_environment_tunables_override_public_yaml():
+    path = Path(__file__).resolve().parents[1] / "config.example.yaml"
+
+    settings = Settings.load(
+        path,
+        environ={**HMAC_ENV, "GUARDIAN_MAX_AGE_SECONDS": "12"},
+    )
+
+    assert settings.security.max_age_seconds == 12

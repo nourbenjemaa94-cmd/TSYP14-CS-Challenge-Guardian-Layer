@@ -1,4 +1,13 @@
+# Local secrets and operator-only configuration (never commit).
 .env
+**/.env
+config.yaml
+**/config.yaml
+certs/
+**/certs/
+*.key
+**/*.key
+!.env.example
 .venv/
 __pycache__/
 *.py[cod]
@@ -9,6 +18,7 @@ __pycache__/
 
 # Runtime state and binaries (never committed)
 guardian/data/
+data/
 *.exe
 *.msi
 *.gguf

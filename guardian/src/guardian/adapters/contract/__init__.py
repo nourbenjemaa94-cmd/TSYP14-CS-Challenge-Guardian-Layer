@@ -8,6 +8,7 @@ never loads model-related code.
 from .errors import MappingError, MappingErrorCode
 from .mapper import BATCH_ID_SEPARATOR, GenericMapper, parse_timestamp
 from .profile import MappingProfile, load_profile
+from .registry import ProfileRecord, ProfileRegistry, ProfileStatus, profile_fingerprint
 from .unit_converter import CANONICAL_UNITS, UnitConverter, normalize_unit
 
 __all__ = [
@@ -21,4 +22,8 @@ __all__ = [
     "load_profile",
     "normalize_unit",
     "parse_timestamp",
+    "ProfileRecord",
+    "ProfileRegistry",
+    "ProfileStatus",
+    "profile_fingerprint",
 ]

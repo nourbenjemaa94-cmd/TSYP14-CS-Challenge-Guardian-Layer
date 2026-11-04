@@ -20,6 +20,8 @@ class HandlerResult:
     accepted: bool
     code: str
     detail: str = ""
+    response: Any | None = None
+    http_status: int = 200
 
 
 MessageHandler = Callable[[IncomingMessage], HandlerResult]

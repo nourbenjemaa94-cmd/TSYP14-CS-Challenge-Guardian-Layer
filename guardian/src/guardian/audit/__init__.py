@@ -2,7 +2,7 @@
 Audit Subsystem (Member 3 & 4: Ghaith Mnasri & Rayen Saidi)
 Responsible for:
 - Event logging with correlation tracking (logger.py)
-- Historical telemetry persistence (event_store.py)
+- In-memory historical telemetry read model (event_store.py)
 - Real-time audit timeline WebSocket streaming (timeline.py)
 """
 

@@ -11,7 +11,7 @@ from guardian.adapters.contract.ai_mapper import suggest_mapping
 from guardian.security.authentication import canonical_bytes, signature_for, verify_signature
 from guardian.security.errors import ReasonCode, SecurityConfigurationError, SecurityRejection, WarningCode
 from guardian.security.freshness import format_timestamp
-from guardian.security.gate import SecuritySettings
+from guardian.security.gate import SecurityGate, SecuritySettings
 from tests.support import (
     BRAIN_KEY,
     FIXED,
@@ -19,6 +19,7 @@ from tests.support import (
     TWIN_KEY,
     FakeTime,
     make_gate,
+    make_settings,
     raw,
     reading,
     signed,
@@ -47,6 +48,24 @@ def test_valid_message_is_accepted() -> None:
     assert accepted.authenticated_layer == "twin"
     assert accepted.warnings == ()
     assert accepted.envelope["payload"]["value"] == 180
+
+
+def test_authenticated_partner_identity_is_not_the_sensor_device_id() -> None:
+    clock = FakeTime()
+    gate = SecurityGate(
+        make_settings(),
+        clock=clock.clock,
+        monotonic=clock.monotonic,
+        partner_identities={"twin": "twin:A"},
+    )
+
+    accepted = gate.check_inbound(
+        raw(signed(reading(source={"device_id": "S02"}))),
+        "publish_reading",
+    )
+
+    assert accepted.partner_identity == "twin:A"
+    assert accepted.source_key == "twin:S02"
 
 
 def test_whitespace_does_not_change_the_signature() -> None:

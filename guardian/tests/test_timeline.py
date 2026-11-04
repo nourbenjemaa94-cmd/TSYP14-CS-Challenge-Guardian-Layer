@@ -9,12 +9,13 @@ Vérifie l'exigence R3 :
 3. Contrôle strict de l'ordre de causalité :
    - Événement 1 : READING_RECEIVED
    - Événement 2 : GUARDIAN_VERDICT (UNTRUSTED / ISOLATE)
-   - Événement 3 : ISOLATED (status: BLOCKED)
+   - Événement 3 : LOCAL_FORWARD_BLOCKED (status: BLOCKED)
 4. Vérification de la transmission autorisée (SENT_TO_BRAIN) en cas de donnée saine.
 5. Vérification de la corrélation via le même event_id sur l'ensemble de la chaîne cause-effet.
 """
 
 import asyncio
+import os
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
@@ -22,6 +23,8 @@ from fastapi.testclient import TestClient
 from guardian.audit.timeline import timeline_manager
 from guardian.main import app
 from guardian.orchestration.pipeline import GuardianPipeline
+
+os.environ.setdefault("GUARDIAN_TIMELINE_MODE", "local")
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +37,7 @@ class MockSecurity:
 
 
 class MockContract:
-    def map_to_canonical(self, raw_message: dict) -> dict:
+    def map_message(self, raw_message: dict, _profile=None, _source_adapter: str = "test") -> dict:
         # Convertit m en cm comme décrit sur le schéma d'architecture
         raw_val = raw_message.get("levelOfWater", raw_message.get("value", 0))
         unit = raw_message.get("unit", "m")
@@ -88,7 +91,7 @@ def create_test_pipeline():
     """Instancie un pipeline complet avec les mocks configurés."""
     timeline_manager.clear()
     mock_output = MagicMock()
-    mock_output.send_to_brain = AsyncMock()
+    mock_output.send_to_brain = AsyncMock(return_value=True)
     mock_logger = MagicMock()
 
     pipeline = GuardianPipeline(
@@ -114,7 +117,7 @@ def test_timeline_fake_flood_attack_causality():
     """
     Test R3 : Scénario d'attaque de fausse crue (fake_flood).
     Vérifie la chaîne causale stricte :
-    READING_RECEIVED -> GUARDIAN_VERDICT (UNTRUSTED, ISOLATE) -> ISOLATED (BLOCKED).
+    READING_RECEIVED -> GUARDIAN_VERDICT (UNTRUSTED, ISOLATE) -> LOCAL_FORWARD_BLOCKED.
     """
     pipeline, logger = create_test_pipeline()
 
@@ -152,7 +155,7 @@ def test_timeline_fake_flood_attack_causality():
 
         # 3. Événement 3 : Action de Confinement (Attaque isolée, Brain protégé)
         evt3 = websocket.receive_json()
-        assert evt3["stage"] == "ISOLATED"
+        assert evt3["stage"] == "LOCAL_FORWARD_BLOCKED"
         assert evt3["event_id"] == evt1["event_id"]
         assert evt3["status"] == "BLOCKED"
         assert evt3["action"] == "ISOLATE"
@@ -191,10 +194,16 @@ def test_timeline_legitimate_reading_forwarded_to_brain():
         assert evt2["action"] == "ALLOW"
 
         evt3 = websocket.receive_json()
-        assert evt3["stage"] == "SENT_TO_BRAIN"
+        assert evt3["stage"] == "FORWARD_REQUESTED"
         assert evt3["event_id"] == "EVT-NORMAL-WATER-02"
-        assert evt3["status"] == "DELIVERED"
+        assert evt3["status"] == "REQUESTED"
         assert evt3["destination"] == "CITY_BRAIN"
+
+        evt4 = websocket.receive_json()
+        assert evt4["stage"] == "FORWARD_CONFIRMED"
+        assert evt4["event_id"] == "EVT-NORMAL-WATER-02"
+        assert evt4["status"] == "DELIVERED"
+        assert evt4["destination"] == "CITY_BRAIN"
 
 
 def test_timeline_security_rejected():
@@ -222,3 +231,50 @@ def test_timeline_security_rejected():
         assert evt1["stage"] == "SECURITY_REJECTED"
         assert evt1["event_id"] == "EVT-AUTH-FAIL-03"
         assert evt1["status"] == "REJECTED"
+
+
+def test_timeline_forward_failure_is_not_marked_delivered():
+    pipeline, logger = create_test_pipeline()
+    pipeline.output.send_to_brain = AsyncMock(return_value=False)
+    message = {
+        "event_id": "EVT-BRAIN-FAIL-04",
+        "sensor_id": "S01",
+        "levelOfWater": 0.52,
+        "unit": "m",
+        "token": "valid_token",
+    }
+
+    with client.websocket_connect("/ws/timeline") as websocket:
+        result = asyncio.run(pipeline.process_incoming(message, logger))
+        assert result["forward_status"] == "FORWARD_FAILED"
+        websocket.receive_json()
+        websocket.receive_json()
+        requested = websocket.receive_json()
+        failed = websocket.receive_json()
+
+    assert requested["stage"] == "FORWARD_REQUESTED"
+    assert failed["stage"] == "FORWARD_FAILED"
+    assert failed["status"] == "FAILED"
+
+
+def test_timeline_does_not_publish_secrets_or_unknown_payload_fields():
+    pipeline, logger = create_test_pipeline()
+    message = {
+        "event_id": "EVT-NONSECRET-05",
+        "sensor_id": "S01",
+        "levelOfWater": 0.52,
+        "unit": "m",
+        "token": "do-not-publish",
+        "signature": "hmac-do-not-publish",
+        "password": "do-not-publish",
+        "private_key": "do-not-publish",
+    }
+
+    with client.websocket_connect("/ws/timeline") as websocket:
+        asyncio.run(pipeline.process_incoming(message, logger))
+        event = websocket.receive_json()
+
+    serialized = str(event)
+    assert "do-not-publish" not in serialized
+    assert event["event_id"] == "EVT-NONSECRET-05"
+    assert event["raw_input"]["sensor_id"] == "S01"
