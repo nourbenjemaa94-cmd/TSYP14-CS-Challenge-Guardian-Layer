@@ -139,6 +139,14 @@ def test_load_without_dotenv_or_keys_fails_closed(tmp_path, monkeypatch: pytest.
         Settings.load()
 
 
+def test_forward_to_brain_switch_defaults_true_and_reads_env():
+    assert Settings.load(environ=HMAC_ENV).partners.brain.forward is True
+    assert Settings.load(environ={**HMAC_ENV, "GUARDIAN_FORWARD_TO_BRAIN": "false"}).partners.brain.forward is False
+
+    with pytest.raises(SecurityConfigurationError, match="GUARDIAN_FORWARD_TO_BRAIN"):
+        Settings.load(environ={**HMAC_ENV, "GUARDIAN_FORWARD_TO_BRAIN": "maybe"})
+
+
 def test_mqtt_default_port_matches_tls_default():
     settings = Settings.load(environ=HMAC_ENV)
 

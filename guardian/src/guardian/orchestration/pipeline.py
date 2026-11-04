@@ -90,9 +90,13 @@ class GuardianPipeline:
         mapping_profile: Any | None = None,
         mapping_profiles: dict[str, Any] | None = None,
         profile_registry: ProfileRegistry | None = None,
+        forward_to_brain: bool = True,
     ):
         self.security = security
         self.contract = contract
+        # Gatekeeper mode forwards non-isolated verdicts; observer mode only
+        # stores them (GUARDIAN_FORWARD_TO_BRAIN=false) for the Brain to pull.
+        self.forward_to_brain = forward_to_brain
         # EventStore and TimelineManager are process-local read models. They
         # are not durable evidence stores and must not be described as such.
         self.store = event_store
@@ -433,7 +437,13 @@ class GuardianPipeline:
         log_event(logger, event_id, "TRUST_ASSESSMENT", verdict, final_reason, action=action, anomaly_flags=flags)
         result_payload = {**canonical_msg, "event_id": event_id, "trust_verdict": verdict,
                           "reason": final_reason, "containment_action": action}
-        if action != "ISOLATE":
+        if action != "ISOLATE" and not self.forward_to_brain:
+            # Observer mode: the verdict is persisted above and served on request.
+            result_payload["forward_status"] = "STORED"
+            await self.timeline.broadcast({"timestamp": get_utc_now(), "event_id": event_id,
+                "layer": "GUARDIAN_AUDIT", "stage": "VERDICT_STORED", "sensor_id": sensor_id,
+                "status": "STORED", "action": action, "destination": "EVENT_STORE"})
+        elif action != "ISOLATE":
             forward_status = await self._forward(result_payload, logger, event_id, sensor_id)
             result_payload["forward_status"] = forward_status
             await self.timeline.broadcast({"timestamp": get_utc_now(), "event_id": event_id,

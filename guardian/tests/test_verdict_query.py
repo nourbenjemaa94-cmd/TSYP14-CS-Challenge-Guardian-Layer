@@ -106,6 +106,62 @@ def test_brain_query_signed_with_wrong_key_is_rejected(client: TestClient) -> No
     assert response.json()["error"] == "SIGNATURE_INVALID"
 
 
+def test_get_verdict_by_event_id_is_signed_by_guardian(client: TestClient) -> None:
+    assert client.post("/api/v1/telemetry", content=json.dumps(telemetry_body()).encode()).status_code == 200
+
+    response = client.get("/api/v1/verdicts/telemetry-1")
+
+    assert response.status_code == 200
+    reply = response.json()
+    assert reply["type"] == "trust_verdict"
+    assert reply["payload"]["event_id"] == "telemetry-1"
+    assert reply["payload"]["verdict"] in {"TRUSTED", "SUSPICIOUS", "UNTRUSTED"}
+    assert verify_signature(reply, KEYS["GUARDIAN_HMAC_KEY_GUARDIAN"])
+
+    missing = client.get("/api/v1/verdicts/does-not-exist")
+    assert missing.status_code == 404
+    assert missing.json() == {"error": "VERDICT_NOT_FOUND", "event_id": "does-not-exist"}
+
+
+def test_observer_mode_stores_verdicts_without_forwarding(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, value in KEYS.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("GUARDIAN_FORWARD_TO_BRAIN", "false")
+    sent: list[dict] = []
+
+    async def record(_self, payload):
+        sent.append(payload)
+        return True
+
+    monkeypatch.setattr(RestBrainOutputAdapter, "send_to_brain", record)
+    previous_pipeline, previous_signer = main._pipeline, main._outbound_signer
+    main._pipeline = None
+    main._outbound_signer = None
+    default_event_store.clear()
+    try:
+        with TestClient(main.app) as client:
+            assert main._pipeline is not None and main._pipeline.forward_to_brain is False
+            ingestion = client.post("/api/v1/telemetry", content=json.dumps(telemetry_body()).encode())
+            assert ingestion.status_code == 200
+            assert ingestion.json()["forward_status"] == "STORED"
+            assert sent == []
+
+            stored = client.get("/api/v1/verdicts/telemetry-1")
+            assert stored.status_code == 200
+            assert verify_signature(stored.json(), KEYS["GUARDIAN_HMAC_KEY_GUARDIAN"])
+    finally:
+        default_event_store.clear()
+        main._pipeline, main._outbound_signer = previous_pipeline, previous_signer
+
+
+def test_gatekeeper_mode_is_the_default(client: TestClient) -> None:
+    assert main._pipeline is not None and main._pipeline.forward_to_brain is True
+
+    ingestion = client.post("/api/v1/telemetry", content=json.dumps(telemetry_body()).encode())
+    assert ingestion.status_code == 200
+    assert ingestion.json()["forward_status"] == "FORWARD_CONFIRMED"
+
+
 def test_unknown_verdict_event_returns_not_found(client: TestClient) -> None:
     response = client.post(
         "/v1/verdicts/query",

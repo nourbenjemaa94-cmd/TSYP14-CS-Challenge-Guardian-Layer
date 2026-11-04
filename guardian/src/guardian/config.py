@@ -112,6 +112,9 @@ class BrainPartnerConfig(BaseModel):
     endpoint: str = "http://localhost:8002/api/v1/brain/ingest"
     timeout_seconds: float = Field(default=10.0, gt=0)
     retry_count: int = Field(default=0, ge=0)
+    # Gatekeeper (True) pushes verdicts to the Brain; observer (False) only stores
+    # them for GET /api/v1/verdicts/{event_id} and POST /v1/verdicts/query.
+    forward: bool = True
 
     @field_validator("endpoint")
     @classmethod
@@ -319,6 +322,7 @@ class Settings(BaseModel):
             (("partners", "brain", "endpoint"), ("CITY_BRAIN_URL",), str),
             (("partners", "brain", "timeout_seconds"), ("CITY_BRAIN_TIMEOUT_SECONDS",), float),
             (("partners", "brain", "retry_count"), ("CITY_BRAIN_MAX_RETRIES",), int),
+            (("partners", "brain", "forward"), ("GUARDIAN_FORWARD_TO_BRAIN",), _env_bool),
             (("partners", "twin", "mqtt", "host"), ("TWIN_MQTT_BROKER", "MQTT_HOST"), str),
             (("partners", "twin", "mqtt", "port"), ("TWIN_MQTT_PORT", "MQTT_PORT"), int),
             (("partners", "twin", "mqtt", "topic"), ("TWIN_MQTT_TOPIC", "MQTT_TOPIC"), str),

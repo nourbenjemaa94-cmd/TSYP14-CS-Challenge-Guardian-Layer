@@ -228,8 +228,33 @@ def _default_pipeline() -> GuardianPipeline:
             ),
             mapping_profiles=profiles,
             profile_registry=profile_registry,
+            forward_to_brain=loaded.partners.brain.forward,
         )
     return _pipeline
+
+
+@app.get("/api/v1/verdicts/{event_id}")
+async def verdict_by_event_id(event_id: str):
+    """Return one persisted verdict, signed by Guardian.
+
+    The verdict carries Guardian's HMAC signature so the reader can verify it,
+    but the read itself is unauthenticated. A Brain that must authenticate on
+    read uses the signed ``POST /v1/verdicts/query`` instead.
+    """
+    try:
+        pipeline = _default_pipeline()
+    except (SecurityConfigurationError, MappingError, ValueError) as exc:
+        return JSONResponse(status_code=503, content={"error": "PIPELINE_NOT_CONFIGURED", "message": str(exc)})
+    verdict = pipeline.store.get_verdict(event_id)
+    if verdict is None:
+        return JSONResponse(status_code=404, content={"error": "VERDICT_NOT_FOUND", "event_id": event_id})
+    signer = _outbound_signer
+    if signer is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "PIPELINE_NOT_CONFIGURED", "message": "Guardian cannot sign before startup."},
+        )
+    return JSONResponse(status_code=200, content=signer.sign(message_type="trust_verdict", payload=dict(verdict)))
 
 
 @app.post("/v1/verdicts/query")
