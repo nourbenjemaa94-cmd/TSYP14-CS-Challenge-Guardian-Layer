@@ -20,8 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code and tests
 COPY . .
 
-# Expose HTTP / WebSocket port
+# Expose HTTP / WebSocket port (default; GUARDIAN_PORT overrides at run time)
 EXPOSE 8000
 
-# Run FastAPI via Uvicorn
-CMD ["uvicorn", "guardian.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run FastAPI via Uvicorn on GUARDIAN_PORT; exec keeps uvicorn as PID 1.
+CMD ["sh", "-c", "exec uvicorn guardian.main:app --host 0.0.0.0 --port ${GUARDIAN_PORT:-8000}"]

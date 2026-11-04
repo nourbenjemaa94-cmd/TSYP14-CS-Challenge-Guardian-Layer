@@ -84,7 +84,19 @@ docker compose down
 If `guardian/.env` is absent, `docker compose config` fails explicitly because
 the required `env_file` is missing; there is no permissive HMAC fallback. With
 a valid private `.env`, `Settings.load()` reads the three keys and Guardian's
-healthcheck can become ready. `mocks.mock_brain` is a verdict-request client,
+healthcheck (`GET /ready`, the full composition check) can become healthy.
+
+Two environment files exist and they do different jobs. The Compose project
+`.env` next to `docker-compose.yml` (template: `.env.example` at the repository
+root) only feeds `${...}` interpolation: `GUARDIAN_PORT`, `CITY_BRAIN_URL` and
+`GUARDIAN_LLM_URL`. `guardian/.env` holds the secrets and is injected into the
+containers. Effective precedence for a Guardian setting is: Compose project
+`.env` interpolation -> container `environment:` -> `guardian/.env` (`env_file`)
+-> YAML (`GUARDIAN_CONFIG`) -> built-in defaults. To change the port, set
+`GUARDIAN_PORT` once in the project `.env`: the published port, the port
+uvicorn binds inside the container, the healthcheck and the `twin-mock` target
+all follow it. Check with `docker compose config | grep -n 9443` after setting
+`GUARDIAN_PORT=9443`. `mocks.mock_brain` is a verdict-request client,
 not the Brain HTTP service; `brain-http-mock` is the explicit HTTP receiver
 used only for local simulation.
 

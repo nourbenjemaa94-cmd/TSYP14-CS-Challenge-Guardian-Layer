@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,12 +14,25 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "docker-compose.yml"
 
 
+_INTERPOLATION = re.compile(r"\$\{(?P<name>[A-Z0-9_]+)(?::-(?P<default>[^}]*))?\}")
+
+
+def _interpolate(text: str, variables: dict[str, str] | None = None) -> str:
+    """Resolve ``${VAR:-default}`` the way Compose does, without Docker."""
+    values = variables or {}
+
+    def replace(match: re.Match[str]) -> str:
+        return values.get(match.group("name"), match.group("default") or "")
+
+    return _INTERPOLATION.sub(replace, text)
+
+
 def test_compose_declares_one_shot_twin_and_explicit_brain_server():
     document = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
     services = document["services"]
 
     assert services["twin-mock"]["command"][-2:] == ["--mode", "normal"]
-    assert services["twin-mock"]["environment"] == ["GUARDIAN_URL=http://guardian:8000"]
+    assert services["twin-mock"]["environment"] == ["GUARDIAN_URL=http://guardian:${GUARDIAN_PORT:-8000}"]
     assert services["twin-mock"]["env_file"] == ["./guardian/.env"]
     assert "GUARDIAN_TIMELINE_MODE=disabled" in services["guardian"]["environment"]
     assert "GUARDIAN_PROFILE_DIR=/app/data/profiles" in services["guardian"]["environment"]
@@ -29,6 +43,46 @@ def test_compose_declares_one_shot_twin_and_explicit_brain_server():
     assert services["brain-http-mock"]["env_file"] == ["./guardian/.env"]
     assert "brain-mock" not in services
     assert "city-brain" not in services["guardian"]["environment"][3]
+
+
+def test_compose_port_and_partner_urls_are_interpolated_with_safe_defaults():
+    text = COMPOSE.read_text(encoding="utf-8")
+    assert "version:" not in yaml.safe_load(text)
+
+    defaults = yaml.safe_load(_interpolate(text))
+    guardian = defaults["services"]["guardian"]
+    assert guardian["ports"] == ["8000:8000"]
+    assert "GUARDIAN_PORT=8000" in guardian["environment"]
+    assert "CITY_BRAIN_URL=http://brain-http-mock:8002/api/v1/brain/ingest" in guardian["environment"]
+    assert "GUARDIAN_LLM_URL=http://host.docker.internal:11434" in guardian["environment"]
+    assert guardian["healthcheck"]["test"][-1] == "http://localhost:8000/ready"
+    assert defaults["services"]["twin-mock"]["environment"] == ["GUARDIAN_URL=http://guardian:8000"]
+
+    overridden = yaml.safe_load(
+        _interpolate(text, {"GUARDIAN_PORT": "9443", "CITY_BRAIN_URL": "https://brain.internal/ingest"})
+    )
+    guardian = overridden["services"]["guardian"]
+    assert guardian["ports"] == ["9443:9443"]
+    assert "GUARDIAN_PORT=9443" in guardian["environment"]
+    assert "CITY_BRAIN_URL=https://brain.internal/ingest" in guardian["environment"]
+    assert guardian["healthcheck"]["test"][-1] == "http://localhost:9443/ready"
+    assert overridden["services"]["twin-mock"]["environment"] == ["GUARDIAN_URL=http://guardian:9443"]
+
+
+def test_root_env_example_lists_only_compose_interpolation_variables():
+    lines = [
+        line.split("=", 1)[0]
+        for line in (ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    assert lines == ["GUARDIAN_PORT", "CITY_BRAIN_URL", "GUARDIAN_LLM_URL"]
+    assert "GUARDIAN_HMAC_KEY_" not in (ROOT / ".env.example").read_text(encoding="utf-8")
+
+
+def test_dockerfile_listens_on_guardian_port():
+    dockerfile = (ROOT / "guardian" / "Dockerfile").read_text(encoding="utf-8")
+    assert "${GUARDIAN_PORT:-8000}" in dockerfile
+    assert '"--port", "8000"' not in dockerfile
 
 
 def test_compose_requires_private_env_file_and_never_embeds_hmac_keys():

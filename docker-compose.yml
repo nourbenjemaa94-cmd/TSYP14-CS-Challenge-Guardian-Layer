@@ -1,5 +1,5 @@
-version: '3.8'
-
+# Interpolated values (${VAR:-default}) come from the Compose project .env in
+# this directory (see .env.example); container secrets come from guardian/.env.
 services:
   guardian:
     build:
@@ -7,17 +7,17 @@ services:
       dockerfile: Dockerfile
     container_name: guardian-gateway
     ports:
-      - "8000:8000"
+      - "${GUARDIAN_PORT:-8000}:${GUARDIAN_PORT:-8000}"
     env_file:
       - ./guardian/.env
     environment:
       - GUARDIAN_ENV=production
       - GUARDIAN_HOST=0.0.0.0
-      - GUARDIAN_PORT=8000
+      - GUARDIAN_PORT=${GUARDIAN_PORT:-8000}
       - GUARDIAN_TIMELINE_MODE=disabled
       - GUARDIAN_PROFILE_DIR=/app/data/profiles
-      - CITY_BRAIN_URL=http://brain-http-mock:8002/api/v1/brain/ingest
-      - GUARDIAN_LLM_URL=http://host.docker.internal:11434
+      - CITY_BRAIN_URL=${CITY_BRAIN_URL:-http://brain-http-mock:8002/api/v1/brain/ingest}
+      - GUARDIAN_LLM_URL=${GUARDIAN_LLM_URL:-http://host.docker.internal:11434}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -28,7 +28,8 @@ services:
       - ./guardian/certs:/run/secrets/certs:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      # /ready proves the full composition (keys, pipeline, adapters); /health is liveness only.
+      test: ["CMD", "curl", "-fsS", "http://localhost:${GUARDIAN_PORT:-8000}/ready"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -45,7 +46,7 @@ services:
     env_file:
       - ./guardian/.env
     environment:
-      - GUARDIAN_URL=http://guardian:8000
+      - GUARDIAN_URL=http://guardian:${GUARDIAN_PORT:-8000}
     depends_on:
       guardian:
         condition: service_healthy
