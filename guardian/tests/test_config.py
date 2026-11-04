@@ -139,6 +139,18 @@ def test_load_without_dotenv_or_keys_fails_closed(tmp_path, monkeypatch: pytest.
         Settings.load()
 
 
+def test_onboarding_min_proposers_defaults_to_two_and_is_bounded():
+    assert Settings.load(environ=HMAC_ENV).contract.onboarding_min_proposers == 2
+    assert (
+        Settings.load(environ={**HMAC_ENV, "GUARDIAN_ONBOARDING_MIN_PROPOSERS": "1"}).contract.onboarding_min_proposers
+        == 1
+    )
+
+    for invalid in ("0", "4"):
+        with pytest.raises(SecurityConfigurationError, match="onboarding_min_proposers"):
+            Settings.load(environ={**HMAC_ENV, "GUARDIAN_ONBOARDING_MIN_PROPOSERS": invalid})
+
+
 def test_forward_to_brain_switch_defaults_true_and_reads_env():
     assert Settings.load(environ=HMAC_ENV).partners.brain.forward is True
     assert Settings.load(environ={**HMAC_ENV, "GUARDIAN_FORWARD_TO_BRAIN": "false"}).partners.brain.forward is False

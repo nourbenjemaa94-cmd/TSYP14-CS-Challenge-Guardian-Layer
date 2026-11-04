@@ -173,6 +173,9 @@ class ContractConfig(BaseModel):
     profile_dir: str = "data/profiles"
     onboarding_buffer: int = Field(default=20, ge=0)
     onboarding_timeout_seconds: int = Field(default=120, gt=0)
+    # Independent proposers (heuristic, embedding, chat model) that must agree
+    # before an onboarding proposal is accepted. 1 = heuristic alone.
+    onboarding_min_proposers: int = Field(default=2, ge=1, le=3)
     probation_messages: int = Field(default=20, ge=0)
 
 
@@ -345,6 +348,7 @@ class Settings(BaseModel):
             (("contract", "profile_dir"), ("GUARDIAN_PROFILE_DIR",), str),
             (("contract", "onboarding_buffer"), ("GUARDIAN_ONBOARDING_BUFFER",), int),
             (("contract", "onboarding_timeout_seconds"), ("GUARDIAN_ONBOARDING_TIMEOUT_SECONDS",), int),
+            (("contract", "onboarding_min_proposers"), ("GUARDIAN_ONBOARDING_MIN_PROPOSERS",), int),
             (("contract", "probation_messages"), ("GUARDIAN_PROBATION_MESSAGES",), int),
             (("log_dir",), ("AUDIT_LOG_DIR",), str),
         ]
