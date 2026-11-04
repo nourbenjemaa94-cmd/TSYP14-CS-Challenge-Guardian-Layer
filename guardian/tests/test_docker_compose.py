@@ -71,6 +71,15 @@ def test_docker_compose_one_shot_scenario_when_available():
 
     env = os.environ.copy()
     try:
+        daemon = subprocess.run(
+            ["docker", "info"], cwd=ROOT, env=env, capture_output=True, text=True, check=False, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pytest.skip("Docker daemon is not running")
+    if daemon.returncode != 0:
+        pytest.skip("Docker daemon is not running")
+
+    try:
         config = subprocess.run(
             ["docker", "compose", "config"],
             cwd=ROOT, env=env, capture_output=True, text=True, check=False, timeout=60,
