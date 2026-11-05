@@ -15,8 +15,9 @@ logger = logging.getLogger("guardian.timeline")
 
 
 def get_utc_now() -> str:
-    """Returns current UTC timestamp formatted in ISO 8601 with timezone indicator."""
-    return datetime.now(UTC).isoformat()
+    """Returns current UTC timestamp formatted in ISO 8601 with a ``Z`` suffix."""
+    # TODO(guardian-integration): jury logs expect Z, not +00:00.
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class TimelineManager:
