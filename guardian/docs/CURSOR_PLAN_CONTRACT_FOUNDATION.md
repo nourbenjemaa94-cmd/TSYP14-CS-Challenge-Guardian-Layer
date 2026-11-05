@@ -216,13 +216,14 @@ Repo: `triplet-07` (Guardian layer). Owner: Nour Ben Jemaa (Member 2). Written 3
   - `grep -n "ImportError\|EVT-\|uuid" src/guardian/main.py src/guardian/orchestration/pipeline.py` → nothing.
 - **Commit:** `feat(pipeline): security gate and contract router on the live path`
 
-### 2.5 Port the remaining legacy tests and delete the legacy modules
+### 2.5 Port the remaining legacy tests and delete the unused legacy modules
 
-- **Files:** `tests/legacy/**` → `tests/integration/`, `tests/scenarios/`, `tests/unit/test_docs.py`; delete `src/guardian/legacy_main.py`, `legacy_config.py`, `legacy_src_init.py`, `orchestration/legacy_pipeline.py`, `legacy_outbound.py`, `legacy_init.py`, `audit/legacy_logger.py`, `audit/legacy_init.py`, `requirements-legacy.txt`, `legacy_docs/`, `legacy_root/`, `pytest.ini`'s `--ignore`.
-- **Change:** adapt the 24 integration and 5 scenario tests to `make_client()` and the live route `/api/v1/telemetry`; keep every expected reason code. Tests that targeted removed features (`test_mqtt.py` unless wired, `test_outbound.py` → re-point at `gate.sign_outbound` through the pipeline) are rewritten, not deleted; if one cannot be ported in 30 minutes, mark it `xfail(reason=...)` and list it in the checkpoint report. `test_docs.py` moves to `tests/unit/` and is expected to fail until Phase 4.3: mark `xfail` with that reason.
+- **Amendment:** `orchestration/legacy_outbound.py` (`OutboundSigner`) is production code, imported by `main.py` and `adapters/communication/brain.py`. It is retained under that name (renaming is out of scope). Every other `legacy_*` module, `tests/legacy/`, `legacy_root/`, `legacy_docs/` and `requirements-legacy.txt` is deleted.
+- **Files:** stale / forged-sender / spoofed-reading scenarios live under `tests/scenarios/`; replay and flood are already covered by `tests/test_main_security.py`. `test_docs.py` is deferred to Phase 4.3 / F3.
+- **Change:** unused modules listed above are gone; `pytest.ini` no longer `--ignore=tests/legacy`.
 - **Why:** one app, one test suite; the jury reads the code.
-- **Verify:** `python -m pytest -q` → everything green except the documented xfails; `grep -rn legacy src tests` → nothing; `ruff check src tests` clean.
-- **Commit:** `refactor: port legacy integration and scenario tests; remove legacy modules`
+- **Verify:** `python -m pytest -q` green; `grep -rn legacy_ src tests mocks` shows only `legacy_outbound` importers; `ruff check src tests` clean.
+- **Commit:** `refactor: remove unused legacy modules; legacy_outbound retained as production signer`
 
 **Checkpoint 2 (live, on the laptop):** `PYTHONPATH=src uvicorn guardian.main:app --port 8000` with `.env` loaded, then `python -m mocks.mock_twin --mode normal` → `ACCEPTED`; `--mode replay` → `REPLAY`; `--mode tampered` → `SIGNATURE_INVALID`; `--mode flood` → `RATE_LIMITED`; `--mode twin-alt` → `UNKNOWN_SCHEMA` (this becomes onboarding in Phase 3). Each run leaves `logs/<mode>-<UTC>.log`. `/ws/timeline` shows `READING_RECEIVED → GUARDIAN_VERDICT → SENT_TO_BRAIN` for the normal case.
 

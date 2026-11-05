@@ -1,6 +1,6 @@
 line-length = 120
 target-version = "py312"
-exclude = ["**/legacy_*", "tests/legacy"]
+exclude = ["**/legacy_*"]
 
 [lint]
 select = ["E", "F", "B", "I", "UP"]
