@@ -1,0 +1,14 @@
+# Numeric ranges in Guardian's canonical units. Metrics without a team-agreed
+# range stay commented until they are filled in.
+water_level:
+  min: 0
+  max: 1000
+  unit: cm
+# temperature:   # PENDING team
+#   min: -20
+#   max: 60
+#   unit: C
+# traffic_speed:  # PENDING team
+#   min: 0
+#   max: 250
+#   unit: km/h
