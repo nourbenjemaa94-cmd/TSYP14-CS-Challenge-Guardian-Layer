@@ -90,7 +90,8 @@ class EventProvenance(BaseModel):
     source_schema: str
     mapping_profile_id: str
     profile_version: str = "1.0"
-    # profile_status (PROBATION/ACTIVE) is added with the probation gate (handoff 8.4).
+    # TODO(guardian-integration): Core currently ignores profile_status.
+    profile_status: Literal["ACTIVE", "PROBATION"] = "ACTIVE"
 
 
 class GuardianEvent(BaseModel):

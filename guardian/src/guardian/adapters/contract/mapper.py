@@ -99,6 +99,7 @@ class GenericMapper:
         message: dict[str, Any],
         profile: MappingProfile,
         source_adapter: str = "unknown",
+        profile_status: str = "ACTIVE",
     ) -> list[GuardianEvent]:
         if not isinstance(message, dict):
             raise MappingError(MappingErrorCode.INVALID_VALUE, "message must be a JSON object")
@@ -125,7 +126,7 @@ class GenericMapper:
                     path=profile.batch_path, event_id=event_id,
                 )
             try:
-                events.append(self._map_one(message, item, profile, source_adapter, item_id))
+                events.append(self._map_one(message, item, profile, source_adapter, item_id, profile_status))
             except MappingError as exc:
                 if exc.event_id is None:
                     exc.event_id = item_id
@@ -139,6 +140,7 @@ class GenericMapper:
         profile: MappingProfile,
         source_adapter: str,
         event_id: str,
+        profile_status: str = "ACTIVE",
     ) -> GuardianEvent:
         def get(path: str) -> Any:
             return resolve(path, root=root, item=item)
@@ -178,6 +180,7 @@ class GenericMapper:
                     source_schema=profile.schema_id,
                     mapping_profile_id=profile.profile_id,
                     profile_version=profile.version,
+                    profile_status="PROBATION" if profile_status == "PROBATION" else "ACTIVE",
                 ),
             )
         except ValidationError as exc:

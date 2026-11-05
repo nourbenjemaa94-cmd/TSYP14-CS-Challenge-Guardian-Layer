@@ -24,7 +24,13 @@ def test_diagram_example_maps_to_canonical_reading(mapper):
     assert event.payload == {"metric": "water_level", "value": 180.0, "unit": "cm"}
     assert event.provenance.source_adapter == "rest"
     assert event.provenance.mapping_profile_id == "test-v1"
+    assert event.provenance.profile_status == "ACTIVE"
     assert event.twin_id is None
+
+
+def test_probation_status_is_copied_onto_the_event(mapper):
+    (event,) = mapper.map_message(DIAGRAM_MESSAGE, DIAGRAM_PROFILE, "rest", profile_status="PROBATION")
+    assert event.provenance.profile_status == "PROBATION"
 
 
 def test_measurement_event_feeds_the_core(mapper):

@@ -24,7 +24,7 @@ from typing import Any, Literal, Protocol
 from guardian.adapters.contract.errors import MappingError, MappingErrorCode
 from guardian.adapters.contract.mapper import GenericMapper
 from guardian.adapters.contract.registry import ProfileRegistry
-from guardian.audit.logger import log_event
+from guardian.audit.logger import log_event, log_onboarding
 from guardian.audit.timeline import get_utc_now, timeline_manager
 from guardian.contracts.commands import ContainmentCommand, ContainmentOutcome
 from guardian.core.anomaly_detector import AnomalyDetector
@@ -297,9 +297,10 @@ class GuardianPipeline:
             canonical_envelope = envelope.model_dump(exclude_none=True)
             if not isinstance(self.contract, GenericMapper):
                 raise RuntimeError("Production pipeline requires GenericMapper")
+            selected_record = None
             if self.profile_registry is not None:
                 try:
-                    profile = self.profile_registry.select(
+                    selected_record = self.profile_registry.select_record(
                         twin_identity=admitted.partner_identity,
                         event_type=canonical_envelope.get("type", ""),
                         schema_id=(
@@ -314,6 +315,7 @@ class GuardianPipeline:
                         ),
                         event_id=canonical_envelope.get("event_id"),
                     )
+                    profile = selected_record.profile
                 except MappingError as exc:
                     if exc.code is MappingErrorCode.UNKNOWN_SCHEMA and self.onboarding is not None:
                         fingerprint = self.onboarding.submit(
@@ -348,7 +350,14 @@ class GuardianPipeline:
                     event_id=canonical_envelope.get("event_id"),
                 )
             source_adapter = transport_context.transport if transport_context is not None else "rest"
-            events = self.contract.map_message(canonical_envelope, profile, source_adapter)
+            profile_status = selected_record.status if selected_record is not None else "ACTIVE"
+            try:
+                events = self.contract.map_message(
+                    canonical_envelope, profile, source_adapter, profile_status=profile_status
+                )
+            except MappingError:
+                self._reset_probation(selected_record)
+                raise
             accepted = self.security.accept(admitted, canonical_envelope)
         except SecurityRejection as exc:
             self._audit_security_rejection(logger, exc, transport_context)
@@ -372,6 +381,7 @@ class GuardianPipeline:
             await self._process_canonical(event.to_sensor_event().to_core_dict(), logger, event.event_id)
             for event in events
         ]
+        self._advance_probation(selected_record, logger)
         return results[0] if len(results) == 1 else {
             "status": "ACCEPTED",
             "event_id": accepted.event_id,
@@ -583,11 +593,39 @@ class GuardianPipeline:
                 })
         return final_status
 
+    def _probation_threshold(self) -> int:
+        if self.onboarding is not None:
+            return int(self.onboarding.settings.probation_messages)
+        return 20
+
+    def _reset_probation(self, record: Any) -> None:
+        if record is None or self.profile_registry is None or record.status != "PROBATION":
+            return
+        self.profile_registry.reset_clean_map(record.fingerprint)
+
+    def _advance_probation(self, record: Any, logger: Any) -> None:
+        if record is None or self.profile_registry is None or record.status != "PROBATION":
+            return
+        updated = self.profile_registry.note_clean_map(record.fingerprint, self._probation_threshold())
+        if updated.status == "ACTIVE":
+            log_onboarding(logger, "PROFILE_ACTIVE", updated.fingerprint)
+
+    def _probation_for_profile(self, profile: Any) -> Any:
+        if self.profile_registry is None:
+            return None
+        return self.profile_registry.find_probation(profile)
+
     async def process_mapped(self, envelope: dict[str, Any], profile: Any, logger: Any = None) -> dict[str, Any]:
         """Replay a buffered envelope through map + core after onboarding succeeds."""
         if not isinstance(self.contract, GenericMapper):
             raise RuntimeError("Production pipeline requires GenericMapper")
-        events = self.contract.map_message(envelope, profile, "onboarding")
+        record = self._probation_for_profile(profile)
+        status = record.status if record is not None else "ACTIVE"
+        try:
+            events = self.contract.map_message(envelope, profile, "onboarding", profile_status=status)
+        except MappingError:
+            self._reset_probation(record)
+            raise
         if not events:
             raise MappingError(MappingErrorCode.UNMAPPABLE_SCHEMA, event_id=envelope.get("event_id"))
         results = [
@@ -595,5 +633,6 @@ class GuardianPipeline:
             for event in events
             if event.kind == "measurement"
         ]
+        self._advance_probation(record, logger)
         return results[0] if results else {"status": "SKIPPED"}
 

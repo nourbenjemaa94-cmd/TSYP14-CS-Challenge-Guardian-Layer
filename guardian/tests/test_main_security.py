@@ -95,9 +95,9 @@ class RecordingMapper(GenericMapper):
         super().__init__()
         self.adapters: list[str] = []
 
-    def map_message(self, message, profile, source_adapter="unknown"):
+    def map_message(self, message, profile, source_adapter="unknown", profile_status="ACTIVE"):
         self.adapters.append(source_adapter)
-        return super().map_message(message, profile, source_adapter)
+        return super().map_message(message, profile, source_adapter, profile_status=profile_status)
 
 
 def test_production_pipeline_uses_real_security_contract_and_output(monkeypatch: pytest.MonkeyPatch) -> None:

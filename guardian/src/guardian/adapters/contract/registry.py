@@ -1,9 +1,8 @@
 """Persistent, versioned mapping-profile registry.
 
 The registry is deliberately separate from :class:`GenericMapper`: it only
-selects validated ACTIVE profiles for an authenticated Twin identity. Profile
-proposals can be stored as PENDING, but they never enter the live path until an
-operator or an explicit promotion step activates them.
+selects validated ACTIVE or PROBATION profiles for an authenticated Twin
+identity. PENDING proposals never enter the live path until promotion.
 """
 
 from __future__ import annotations
@@ -240,27 +239,113 @@ class ProfileRegistry:
         schema_version: str | None = None,
         event_id: str | None = None,
     ) -> MappingProfile:
-        active_for_event = [
+        return self.select_record(
+            twin_identity=twin_identity,
+            event_type=event_type,
+            schema_id=schema_id,
+            schema_version=schema_version,
+            event_id=event_id,
+        ).profile  # type: ignore[return-value]
+
+    def select_record(
+        self,
+        *,
+        twin_identity: str,
+        event_type: str,
+        schema_id: str | None = None,
+        schema_version: str | None = None,
+        event_id: str | None = None,
+    ) -> ProfileRecord:
+        record = self._select_one(
+            twin_identity=twin_identity,
+            event_type=event_type,
+            schema_id=schema_id,
+            schema_version=schema_version,
+            event_id=event_id,
+            statuses=("ACTIVE",),
+        )
+        if record is None:
+            record = self._select_one(
+                twin_identity=twin_identity,
+                event_type=event_type,
+                schema_id=schema_id,
+                schema_version=schema_version,
+                event_id=event_id,
+                statuses=("PROBATION",),
+            )
+        if record is None:
+            raise MappingError(
+                MappingErrorCode.UNKNOWN_SCHEMA,
+                "no active compatible profile",
+                event_id=event_id,
+            )
+        return record
+
+    def _select_one(
+        self,
+        *,
+        twin_identity: str,
+        event_type: str,
+        schema_id: str | None,
+        schema_version: str | None,
+        event_id: str | None,
+        statuses: tuple[str, ...],
+    ) -> ProfileRecord | None:
+        live_for_event = [
             record for record in self._records.values()
-            if record.status == "ACTIVE"
+            if record.status in statuses
             and record.profile is not None
             and record.twin_identity == twin_identity
             and record.event_type == event_type
         ]
         candidates = [
-            record for record in active_for_event
+            record for record in live_for_event
             if schema_id is not None
             and record.schema_id == schema_id
             and schema_version is not None
             and record.version == schema_version
         ]
-        if len(candidates) != 1:
-            if not candidates and (schema_id is None or schema_version is None) and len(active_for_event) > 1:
-                reason = "ambiguous active profiles"
-            else:
-                reason = "no active compatible profile" if not candidates else "ambiguous active profiles"
-            raise MappingError(MappingErrorCode.UNKNOWN_SCHEMA, reason, event_id=event_id)
-        return candidates[0].profile  # type: ignore[return-value]
+        if len(candidates) == 1:
+            return candidates[0]
+        if not candidates and (schema_id is None or schema_version is None) and len(live_for_event) > 1:
+            raise MappingError(MappingErrorCode.UNKNOWN_SCHEMA, "ambiguous active profiles", event_id=event_id)
+        if len(candidates) > 1:
+            raise MappingError(MappingErrorCode.UNKNOWN_SCHEMA, "ambiguous active profiles", event_id=event_id)
+        return None
+
+    def promote(self, fingerprint: str) -> ProfileRecord:
+        """Move a PROBATION record to ACTIVE after enough clean maps."""
+        record = self._records.get(fingerprint)
+        if record is None or record.status != "PROBATION" or record.profile is None:
+            raise MappingError(MappingErrorCode.PROFILE_NOT_ACTIVE, "profile is not available")
+        return self.update(fingerprint, status="ACTIVE", promoted_at=datetime.now(UTC))
+
+    def note_clean_map(self, fingerprint: str, threshold: int) -> ProfileRecord:
+        """Count one successful map; promote when ``threshold`` consecutive maps succeed."""
+        record = self._records.get(fingerprint)
+        if record is None or record.status != "PROBATION":
+            raise MappingError(MappingErrorCode.PROFILE_NOT_ACTIVE, "profile is not available")
+        updated = self.update(fingerprint, clean_messages=record.clean_messages + 1)
+        if updated.clean_messages >= threshold:
+            return self.promote(fingerprint)
+        return updated
+
+    def reset_clean_map(self, fingerprint: str) -> ProfileRecord:
+        """A mapping failure during probation restarts the clean-map counter."""
+        record = self._records.get(fingerprint)
+        if record is None or record.status != "PROBATION":
+            raise MappingError(MappingErrorCode.PROFILE_NOT_ACTIVE, "profile is not available")
+        return self.update(fingerprint, clean_messages=0)
+
+    def find_probation(self, profile: MappingProfile) -> ProfileRecord | None:
+        matches = [
+            record for record in self._records.values()
+            if record.status == "PROBATION"
+            and record.profile is not None
+            and record.profile.profile_id == profile.profile_id
+            and record.profile.schema_id == profile.schema_id
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def _write(self, record: ProfileRecord) -> None:
         self.profile_dir.mkdir(parents=True, exist_ok=True)
