@@ -44,5 +44,18 @@ PYTHONPATH=src python -m uvicorn guardian.main:app --host 0.0.0.0 --port 8000 --
 
 On PowerShell, use `$env:PYTHONPATH = "src"` before the Uvicorn command.
 `uvicorn src.guardian.main:app` is not supported: `src` is the source root,
-not part of the import package name. Tests under `tests/legacy` remain
-excluded by `guardian/pytest.ini`.
+not part of the import package name.
+
+## Scenario cases
+
+Each case uses the signed envelope. Brain-side expectations are `PENDING Brain team`.
+
+| ID | Name | Layers | Description | Trigger | Expected Guardian | How to verify |
+|---|---|---|---|---|---|---|
+| T1 | Normal reading | Twin → Guardian → Brain | Canonical water level | `python -m mocks.mock_twin --mode normal` | `200 ACCEPTED`, timeline `READING_RECEIVED → GUARDIAN_VERDICT → SENT_TO_BRAIN` or `VERDICT_STORED` | `tests/test_main_security.py`, live mock |
+| T2 | Replay | Twin → Guardian | Same `event_id` twice | `--mode replay` | First `ACCEPTED`, second `409 REPLAY` | `tests/unit/security/test_security_gate.py` |
+| T3 | Tampered | Twin → Guardian | Body changed after signing | `--mode tampered` | `401 SIGNATURE_INVALID` | `tests/test_main_security.py` |
+| T4 | Flood | Twin → Guardian | Concurrent burst over the token bucket | `--mode flood` | `429 RATE_LIMITED` | `tests/unit/security/test_rate_limit.py` |
+| T5 | Stale | Twin → Guardian | Timestamp older than `max_age` | `--mode stale` / `tests/scenarios/test_stale_reading.py` | `422 STALE_TIMESTAMP` | scenario test |
+| T6 | Spoofed (T5) | Twin → Guardian | Foreign layer or key | `tests/scenarios/test_spoofed_reading.py` | `401` / `403` | scenario test |
+| T7 | Onboarding | Twin → Guardian | `twin-alt` unknown shape | `scenarios/onboarding.ps1` | `202 ONBOARDING_PENDING` then `PROFILE_PROBATION` → 20 `GUARDIAN_VERDICT` → `PROFILE_ACTIVE` | `logs/onboarding-2026-11-05T065749.090Z.log` |

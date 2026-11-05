@@ -57,7 +57,7 @@ flowchart TD
 | `audit/event_store.py` | Member 4 + 3 | Temporal in-memory buffer and persistence store |
 | `audit/timeline.py` | Member 4 + 3 | Real-time WebSocket timeline broadcasting for Requirement R3 |
 | `orchestration/pipeline.py` | Member 4 | End-to-end pipeline execution with causality guarantees |
-| `security/` | Member 2 + 5 | Bearer token authentication, freshness checking, replay cache |
+| `security/` | Member 2 + 5 | HMAC admission (`gate.py`), freshness, replay cache, layer authorization |
 | `adapters/` | Member 1 + 2 + 6 | REST & MQTT protocol connectors, canonical unit normalization |
 
 ---

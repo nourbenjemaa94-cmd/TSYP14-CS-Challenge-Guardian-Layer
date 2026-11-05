@@ -9,7 +9,7 @@ This document defines integration protocols and interaction contracts between **
 ```
 ┌─────────────────────┐          HTTP / MQTT          ┌─────────────────────────┐          REST / Webhook         ┌────────────────────────┐
 │     Twin Layer      │ ────────────────────────────> │     Guardian Layer      │ ────────────────────────────> │    City Brain Layer    │
-│  (Sensors / Sim)    │   Token-authenticated raw     │  (Sanity & Trust Gate)  │   Verified canonical events   │  (Urban Orchestration) │
+│  (Sensors / Sim)    │   HMAC-signed envelope        │  (Sanity & Trust Gate)  │   Verified canonical events   │  (Urban Orchestration) │
 └─────────────────────┘   telemetry payload           └─────────────────────────┘                               └────────────────────────┘
                                                                    │
                                                                    ▼ WebSocket: /ws/timeline
@@ -28,21 +28,26 @@ Twin nodes must send HTTP `POST` requests to `/api/v1/telemetry` or publish to M
 
 ```json
 {
+  "schema_version": "1.0",
+  "schema_id": "twin-canonical-v1",
   "event_id": "EVT-TWIN-20261020-001",
-  "sensor_id": "S01",
-  "token": "bearer-secret-token",
-  "timestamp": "2026-10-20T10:00:00Z",
-  "levelOfWater": 0.52,
-  "unit": "m",
-  "device_type": "water_depth_gauge",
-  "battery_level": 94.5
+  "seq": 1,
+  "timestamp": "2026-11-05T06:57:38.000Z",
+  "source": {"layer": "twin", "device_id": "S01"},
+  "zone_id": "PORT",
+  "type": "sensor_reading",
+  "payload": {"metric": "water_level", "value": 52, "unit": "cm"},
+  "signature": "<HMAC-SHA256 with GUARDIAN_HMAC_KEY_TWIN>"
 }
 ```
 
 ### Ingestion Response Codes
-- `200 OK`: Telemetry received, verified, and either forwarded to Brain or quarantined safely.
-- `401 Unauthorized`: Missing or invalid authentication token / signature.
-- `422 Unprocessable Entity`: Malformed JSON or schema non-compliance.
+- `200 OK`: Telemetry received, verified, and either forwarded to Brain or stored (`GUARDIAN_FORWARD_TO_BRAIN=false`).
+- `202 Accepted`: `ONBOARDING_PENDING` for an unknown authenticated payload shape.
+- `401 Unauthorized`: `SIGNATURE_MISSING`, `SIGNATURE_INVALID`, or `UNKNOWN_SENDER`.
+- `409 Conflict`: `REPLAY`.
+- `422 Unprocessable Entity`: Malformed JSON, stale/future timestamp, or mapping failure.
+- `429 Too Many Requests`: `RATE_LIMITED`.
 
 ---
 

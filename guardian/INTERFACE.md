@@ -6,8 +6,7 @@
 
 The supported local test and server commands are documented in the repository
 [`TESTBOOK.md`](../TESTBOOK.md). Run them from `guardian/`; the application is
-imported as `guardian.main:app` with `PYTHONPATH=src`. The paths under
-`tests/legacy` are excluded and are not part of the current interface contract.
+imported as `guardian.main:app` with `PYTHONPATH=src`.
 
 ### MQTT ingress acknowledgement policy
 
@@ -26,17 +25,21 @@ Ingests raw telemetry messages from Digital Twin or physical sensor gateways.
 
 **Request Headers:**
 - `Content-Type: application/json`
-- `Authorization: Bearer <token>` (Optional if token included in body)
 
-**Request Body:**
+**Request Body:** a signed envelope. HMAC-SHA256 over the canonical JSON, field `signature`, key `GUARDIAN_HMAC_KEY_TWIN`.
+
 ```json
 {
-  "event_id": "EVT-ATTACK-FAKE-FLOOD-01",
-  "sensor_id": "S01",
-  "levelOfWater": 3.8,
-  "unit": "m",
-  "token": "valid_token",
-  "timestamp": "2026-10-20T10:00:00Z"
+  "schema_version": "1.0",
+  "schema_id": "twin-canonical-v1",
+  "event_id": "evt-normal-1",
+  "seq": 1,
+  "timestamp": "2026-11-05T06:57:38.000Z",
+  "source": {"layer": "twin", "device_id": "S01"},
+  "zone_id": "PORT",
+  "type": "sensor_reading",
+  "payload": {"metric": "water_level", "value": 180, "unit": "cm"},
+  "signature": "<HMAC-SHA256>"
 }
 ```
 
@@ -44,17 +47,21 @@ Ingests raw telemetry messages from Digital Twin or physical sensor gateways.
 
 Mapping profiles are validated and versioned records stored under
 `GUARDIAN_PROFILE_DIR`. Selection requires the authenticated Twin identity,
-the envelope event type, and (when supplied) `schema_id`; only `ACTIVE`
-records are usable. `PENDING` proposals, including `AIMapper` proposals, are
-never activated automatically and never invoke an LLM on the live measurement
-path. No compatible or uniquely selectable profile returns the public
-`UNKNOWN_SCHEMA` error; the mapper does not invent units, timestamps, or
-identities.
+the envelope event type, and (when supplied) `schema_id`; `ACTIVE` and
+`PROBATION` records are usable. `PENDING` proposals never invoke an LLM on
+the live measurement path. An unknown shape is buffered and returns
+`202 ONBOARDING_PENDING` with a `fingerprint` (replacing a bare `UNKNOWN_SCHEMA`
+when the onboarding manager is attached). After automatic gates pass, the
+profile is `PROBATION` and is promoted to `ACTIVE` after
+`GUARDIAN_PROBATION_MESSAGES` clean maps.
 
 **Responses:**
 - `200 OK`: Telemetry processed. Response includes canonical message, `trust_verdict`, and `containment_action`.
-- `401 Unauthorized`: Token missing or invalid.
-- `422 Unprocessable Entity`: Schema validation failure.
+- `202 Accepted`: `ONBOARDING_PENDING` — unknown authenticated shape is being mapped.
+- `401 Unauthorized`: `SIGNATURE_MISSING`, `SIGNATURE_INVALID`, or `UNKNOWN_SENDER`.
+- `409 Conflict`: `REPLAY`.
+- `422 Unprocessable Entity`: `SCHEMA_INVALID`, `STALE_TIMESTAMP`, `FUTURE_TIMESTAMP`, `UNKNOWN_SCHEMA`, or `UNMAPPABLE_SCHEMA`.
+- `429 Too Many Requests`: `RATE_LIMITED`.
 
 ---
 
@@ -96,9 +103,19 @@ it does not claim that secrets, adapters, or the processing pipeline are ready.
 ```json
 {
   "status": "ALIVE",
-  "service": "guardian-gateway"
+  "service": "guardian-gateway",
+  "triplet": "Triplet 07",
+  "llm": "reachable"
 }
 ```
+
+`llm` is `disabled`, `reachable`, or `unreachable`.
+
+### `GET /api/v1/verdicts/{event_id}`
+Unauthenticated read of one already-signed persisted verdict. `404 VERDICT_NOT_FOUND` if missing.
+
+### `POST /api/v1/profiles/{fingerprint}/reset`
+Signed `reset_profile` operation. Only `source.layer=guardian` may call it. Removes an `UNMAPPABLE` record so the shape can be tried again.
 
 ### `GET /ready`
 Readiness probe for the complete production composition. It returns `200`
