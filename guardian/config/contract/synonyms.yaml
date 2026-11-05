@@ -1,0 +1,57 @@
+# Partner field names (any case / camelCase / snake_case) -> a role and optional
+# canonical metric or unit. Used only by the heuristic proposer.
+
+levelOfWater:
+  role: value
+  metric: water_level
+level_of_water:
+  role: value
+  metric: water_level
+water_level:
+  role: value
+  metric: water_level
+waterLevel:
+  role: value
+  metric: water_level
+value:
+  role: value
+reading:
+  role: value
+  metric: water_level
+
+unit:
+  role: unit
+unitOfMeasure:
+  role: unit
+unit_of_measure:
+  role: unit
+uom:
+  role: unit
+
+metric:
+  role: metric
+measure:
+  role: metric
+
+timestamp:
+  role: timestamp
+time:
+  role: timestamp
+occurred_at:
+  role: timestamp
+ts:
+  role: timestamp
+
+sensor_id:
+  role: sensor_id
+sensorId:
+  role: sensor_id
+gauge:
+  role: sensor_id
+device_id:
+  role: sensor_id
+
+twin_id:
+  role: twin_id
+twinId:
+  role: twin_id
