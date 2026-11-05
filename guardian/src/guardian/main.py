@@ -9,11 +9,13 @@ Exposes:
 """
 
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -35,18 +37,67 @@ from guardian.core.trust_assessor import TrustAssessor, TrustConfig
 from guardian.orchestration.legacy_outbound import OutboundSigner
 from guardian.orchestration.pipeline import GuardianPipeline
 from guardian.security.errors import ReasonCode, SecurityConfigurationError, SecurityRejection
-from guardian.security.gate import SecurityGate
+from guardian.security.gate import SecurityGate, read_dotenv
 
 
-def _public_yaml_server_section() -> dict[str, Any]:
-    """Read the non-secret ``server`` section of the YAML file, if any."""
+def _public_yaml() -> dict[str, Any]:
+    """Read the configured YAML file without validating HMAC keys."""
     path = Path(os.getenv("GUARDIAN_CONFIG", "guardian/config.yaml"))
     try:
         raw = Settings._read_yaml(path, required=False)
     except SecurityConfigurationError:
         return {}
-    server = raw.get("server")
-    return server if isinstance(server, dict) else {}
+    return raw
+
+
+def _public_yaml_section(name: str) -> dict[str, Any]:
+    raw = _public_yaml()
+    section = raw.get(name)
+    return section if isinstance(section, dict) else {}
+
+
+def _public_yaml_server_section() -> dict[str, Any]:
+    """Read the non-secret ``server`` section of the YAML file, if any."""
+    return _public_yaml_section("server")
+
+
+def _nonsecret_env() -> dict[str, str]:
+    """Process environment over ``./.env``. Values are never logged."""
+    dotenv = Path.cwd() / ".env"
+    merged = read_dotenv(dotenv) if dotenv.is_file() else {}
+    merged.update(os.environ)
+    return merged
+
+
+_LLM_CACHE_SECONDS = 30.0
+_llm_cache: tuple[float, str] | None = None
+_llm_transport: httpx.BaseTransport | None = None
+
+
+def _llm_status(*, now: float | None = None) -> str:
+    """``disabled`` / ``reachable`` / ``unreachable``. Cached for 30 s. Never logs bodies."""
+    global _llm_cache
+    env = _nonsecret_env()
+    contract = _public_yaml_section("contract")
+    provider = (env.get("GUARDIAN_LLM_PROVIDER") or str(contract.get("llm_provider") or "ollama")).strip().lower()
+    if provider in {"", "none"}:
+        return "disabled"
+    clock = time.monotonic() if now is None else now
+    if _llm_cache is not None and clock - _llm_cache[0] < _LLM_CACHE_SECONDS:
+        return _llm_cache[1]
+    url = (env.get("GUARDIAN_LLM_URL") or str(contract.get("llm_url") or "http://localhost:11434")).strip()
+    status = _probe_llm(url)
+    _llm_cache = (clock, status)
+    return status
+
+
+def _probe_llm(url: str) -> str:
+    try:
+        with httpx.Client(timeout=2.0, follow_redirects=False, transport=_llm_transport) as client:
+            response = client.get(url.rstrip("/") + "/api/tags")
+    except httpx.HTTPError:
+        return "unreachable"
+    return "reachable" if response.status_code < 500 else "unreachable"
 
 
 def _cors_origins() -> list[str]:
@@ -325,6 +376,7 @@ async def health_check():
         "status": "ALIVE",
         "service": "guardian-gateway",
         "triplet": "Triplet 07",
+        "llm": _llm_status(),
     }
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -23,14 +24,21 @@ def clean_composition(monkeypatch: pytest.MonkeyPatch):
     previous_pipeline = main._pipeline
     previous_signer = main._outbound_signer
     previous_error = main._startup_error
+    previous_cache = main._llm_cache
+    previous_transport = main._llm_transport
     main._pipeline = None
     main._outbound_signer = None
     main._startup_error = None
+    main._llm_cache = None
+    main._llm_transport = None
     monkeypatch.delenv("GUARDIAN_CONFIG", raising=False)
+    monkeypatch.setenv("GUARDIAN_LLM_PROVIDER", "none")
     yield
     main._pipeline = previous_pipeline
     main._outbound_signer = previous_signer
     main._startup_error = previous_error
+    main._llm_cache = previous_cache
+    main._llm_transport = previous_transport
 
 
 def set_keys(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -44,7 +52,9 @@ def test_health_is_liveness_but_missing_keys_make_readiness_fail(monkeypatch: py
         monkeypatch.delenv(name, raising=False)
 
     with TestClient(main.app) as client:
-        assert client.get("/health").status_code == 200
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["llm"] == "disabled"
         response = client.get("/ready")
 
     assert response.status_code == 503
@@ -138,6 +148,54 @@ def test_complete_production_composition_is_ready(monkeypatch: pytest.MonkeyPatc
     body = response.json()
     assert body["status"] == "READY"
     assert all(body["checks"].values())
+
+
+def _llm_app(monkeypatch: pytest.MonkeyPatch, handler) -> TestClient:
+    monkeypatch.setenv("GUARDIAN_LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("GUARDIAN_LLM_URL", "http://ollama.test")
+    main._llm_transport = httpx.MockTransport(handler)
+    return TestClient(main.app)
+
+
+def test_health_llm_is_reachable_when_tags_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    hits = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hits["n"] += 1
+        assert request.url.path == "/api/tags"
+        return httpx.Response(200, json={"models": []})
+
+    with _llm_app(monkeypatch, handler) as client:
+        first = client.get("/health")
+        second = client.get("/health")
+
+    assert first.json()["llm"] == "reachable"
+    assert second.json()["llm"] == "reachable"
+    assert hits["n"] == 1
+
+
+def test_health_llm_is_unreachable_on_server_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "busy"})
+
+    with _llm_app(monkeypatch, handler) as client:
+        assert client.get("/health").json()["llm"] == "unreachable"
+
+
+def test_health_llm_cache_expires_after_thirty_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
+    hits = {"n": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        hits["n"] += 1
+        return httpx.Response(200, json={"models": []})
+
+    monkeypatch.setenv("GUARDIAN_LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("GUARDIAN_LLM_URL", "http://ollama.test")
+    main._llm_transport = httpx.MockTransport(handler)
+    assert main._llm_status(now=100.0) == "reachable"
+    assert main._llm_status(now=129.0) == "reachable"
+    assert main._llm_status(now=130.1) == "reachable"
+    assert hits["n"] == 2
 
 
 def test_timeline_is_closed_when_exposure_is_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
