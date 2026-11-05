@@ -21,6 +21,7 @@ class RestAdapter:
         *,
         max_payload_bytes: int = 65536,
         path: str = "/api/v1/telemetry",
+        expected_format: str = "json",
     ):
         if max_payload_bytes <= 0:
             raise ValueError("max_payload_bytes must be positive")
@@ -30,6 +31,7 @@ class RestAdapter:
         self.handler = handler
         self.max_payload_bytes = max_payload_bytes
         self.path = path
+        self.expected_format = expected_format
 
         self.router = APIRouter()
         self.router.add_api_route(
@@ -50,6 +52,10 @@ class RestAdapter:
             return self._security_response(
                 SecurityRejection(ReasonCode.SCHEMA_INVALID, fields=["body"])
             )
+
+        content_type = request.headers.get("content-type", "")
+        if self.expected_format == "json" and "xml" in content_type.lower():
+            return self._security_response(SecurityRejection(ReasonCode.FORMAT_MISMATCH))
 
         message = IncomingMessage(
             payload=bytes(body),

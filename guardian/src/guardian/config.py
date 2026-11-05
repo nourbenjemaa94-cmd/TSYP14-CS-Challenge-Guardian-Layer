@@ -102,6 +102,7 @@ class TwinPartnerConfig(BaseModel):
     type: str = "rest"
     listen_path: str = "/api/v1/telemetry"
     identity: str = "twin:S01"
+    format: str = "json"
     mqtt: MqttConfig = Field(default_factory=MqttConfig)
 
 

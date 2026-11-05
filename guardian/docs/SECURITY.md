@@ -23,5 +23,5 @@ Every incoming packet passes through strict non-bypassable stages:
 5. **Containment Enforcement**: Malicious data is quarantined or blocked with zero leakage to City Brain.
 6. **Audit Immutability**: All decisions broadcast to `/ws/timeline` with guaranteed `event_id` correlation.
 
-Public security reason codes: `MESSAGE_TOO_LARGE`, `MALFORMED_JSON`, `SCHEMA_INVALID`, `SIGNATURE_MISSING`, `SIGNATURE_INVALID`, `UNKNOWN_SENDER`, `FORBIDDEN`, `RATE_LIMITED`, `SOURCE_MISMATCH`, `STALE_TIMESTAMP`, `FUTURE_TIMESTAMP`, `REPLAY`.
+Public security reason codes: `MESSAGE_TOO_LARGE`, `MALFORMED_JSON`, `SCHEMA_INVALID`, `SIGNATURE_MISSING`, `SIGNATURE_INVALID`, `UNKNOWN_SENDER`, `FORBIDDEN`, `RATE_LIMITED`, `SOURCE_MISMATCH`, `STALE_TIMESTAMP`, `FUTURE_TIMESTAMP`, `REPLAY`, `FORMAT_MISMATCH`.
 

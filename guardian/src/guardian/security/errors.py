@@ -23,6 +23,7 @@ class ReasonCode(StrEnum):
     STALE_TIMESTAMP = "STALE_TIMESTAMP"
     FUTURE_TIMESTAMP = "FUTURE_TIMESTAMP"
     REPLAY = "REPLAY"
+    FORMAT_MISMATCH = "FORMAT_MISMATCH"
 
 
 class WarningCode(StrEnum):
@@ -45,6 +46,7 @@ PUBLIC_MESSAGES: dict[ReasonCode, str] = {
     ReasonCode.STALE_TIMESTAMP: "Message timestamp is too old.",
     ReasonCode.FUTURE_TIMESTAMP: "Message timestamp is too far in the future.",
     ReasonCode.REPLAY: "This event has already been processed.",
+    ReasonCode.FORMAT_MISMATCH: "Content type does not match the declared partner format.",
 }
 
 HTTP_STATUS: dict[ReasonCode, int] = {
@@ -60,6 +62,7 @@ HTTP_STATUS: dict[ReasonCode, int] = {
     ReasonCode.STALE_TIMESTAMP: 422,
     ReasonCode.FUTURE_TIMESTAMP: 422,
     ReasonCode.REPLAY: 409,
+    ReasonCode.FORMAT_MISMATCH: 415,
 }
 
 

@@ -25,7 +25,6 @@ from guardian.security.replay_protection import ReplayProtector
 from guardian.security.validation import (
     check_size,
     claimed_source,
-    parse_json_object,
     safe_event_id,
     validate_envelope,
 )
@@ -210,6 +209,7 @@ class SecurityGate:
         monotonic: Callable[[], float] | None = None,
         max_sources: int = 10_000,
         partner_identities: Mapping[str, str] | None = None,
+        decoder: Any | None = None,
     ) -> None:
         _ensure_safe(settings)
         self.settings = settings
@@ -228,6 +228,11 @@ class SecurityGate:
             max_sources=max_sources,
         )
         self._replay = ReplayProtector(window_seconds=settings.max_age_seconds)
+        if decoder is None:
+            from guardian.adapters.contract.decoders import JsonDecoder
+
+            decoder = JsonDecoder()
+        self.decoder = decoder
 
     def admit(self, raw: bytes, operation: str) -> AdmittedMessage:
         """Size, parse, authenticate, authorize, then rate-limit. No replay state here."""
@@ -236,7 +241,7 @@ class SecurityGate:
         body_bytes = bytes(raw)
         try:
             check_size(body_bytes, self.settings.max_message_bytes)
-            body = parse_json_object(body_bytes)
+            body = self.decoder.decode(body_bytes)
         except SecurityRejection:
             raise
         event_id = safe_event_id(body)

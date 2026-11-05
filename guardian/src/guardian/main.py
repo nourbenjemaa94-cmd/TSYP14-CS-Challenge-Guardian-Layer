@@ -182,6 +182,7 @@ async def guardian_lifespan(application: FastAPI):
         "rest": {
             "path": loaded.partners.twin.listen_path if loaded is not None else "/api/v1/telemetry",
             "max_payload_bytes": loaded.security.max_message_bytes if loaded and loaded.security else 65536,
+            "expected_format": loaded.partners.twin.format if loaded is not None else "json",
         }
     }
     if pipeline is not None and loaded is not None and loaded.partners.twin.adapter.lower() == "mqtt":
