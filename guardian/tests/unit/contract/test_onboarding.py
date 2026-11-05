@@ -30,16 +30,19 @@ def test_shape_fingerprint_ignores_values(tmp_path):
     assert manager.fingerprint_for(first, "twin:S01") == manager.fingerprint_for(second, "twin:S01")
 
 
-def test_successful_onboarding_registers_probation(tmp_path):
+def test_successful_onboarding_registers_probation(tmp_path, caplog):
     manager = _manager(tmp_path, min_proposers=1)
     sample = envelope({"levelOfWater": 1.8, "unit": "m", "sensor_id": "S01"}, type="water_reading")
-    fingerprint = manager.submit(sample, twin_identity="twin:S01")
-    asyncio.run(manager.run_now(fingerprint, "twin:S01"))
+    with caplog.at_level("INFO"):
+        fingerprint = manager.submit(sample, twin_identity="twin:S01")
+        asyncio.run(manager.run_now(fingerprint, "twin:S01"))
     record = manager.registry.get(fingerprint)
     assert record is not None
     assert record.status == "PROBATION"
     assert record.profile is not None
     assert record.profile.value_path == "$.payload.levelOfWater"
+    for event in ("SCHEMA_UNKNOWN", "ONBOARDING_STARTED", "PROFILE_PROPOSED", "PROFILE_PROBATION"):
+        assert event in caplog.text
 
 
 def test_failed_gates_register_unmappable(tmp_path):

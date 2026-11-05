@@ -59,12 +59,16 @@ class OnboardingManager:
         """Buffer one envelope and start at most one task for its fingerprint."""
         fingerprint = self.fingerprint_for(envelope, twin_identity)
         existing = self.registry.get(fingerprint)
-        if existing is not None and existing.status == "UNMAPPABLE":
+        if existing is not None and existing.status in {"UNMAPPABLE", "PROBATION", "ACTIVE"}:
             return fingerprint
+        unseen = fingerprint not in self._buffers
         buffer = self._buffers.setdefault(
             fingerprint, deque(maxlen=self.settings.onboarding_buffer)
         )
         buffer.append(envelope)
+        if unseen and existing is None:
+            log_onboarding(self.audit, "SCHEMA_UNKNOWN", fingerprint)
+            log_onboarding(self.audit, "ONBOARDING_STARTED", fingerprint)
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -119,6 +123,12 @@ class OnboardingManager:
         if profile is None:
             self._fail(fingerprint, twin_identity, "SCHEMA_UNMAPPABLE", gate_results=gate_results)
             return
+        log_onboarding(
+            self.audit,
+            "PROFILE_PROPOSED",
+            fingerprint,
+            proposers_agreed=[item.proposer for item in proposals],
+        )
         record = ProfileRecord(
             profile=profile,
             status="PROBATION",
@@ -132,7 +142,11 @@ class OnboardingManager:
         log_onboarding(self.audit, "PROFILE_PROBATION", fingerprint, consensus=gate_results.get("consensus"))
         if self.process_mapped is not None:
             for sample in list(self._buffers.get(fingerprint, ())):
-                await self.process_mapped(sample, profile)
+                try:
+                    await self.process_mapped(sample, profile)
+                except Exception:
+                    log_onboarding(self.audit, "DRAIN_FAILED", fingerprint)
+                    break
         self._buffers.pop(fingerprint, None)
 
     def _fail(

@@ -41,6 +41,17 @@ def _register(tmp_path, status="PROBATION"):
     return registry, record
 
 
+def test_unique_probation_is_selected_when_schema_id_differs(tmp_path):
+    registry, _record = _register(tmp_path)
+    selected = registry.select(
+        twin_identity="twin:S01",
+        event_type="water_reading",
+        schema_id="unknown-schema",
+        schema_version="1.0",
+    )
+    assert selected.profile_id == "probation-water-v1"
+
+
 def test_probation_profile_is_selectable(tmp_path):
     registry, _record = _register(tmp_path)
     selected = registry.select(

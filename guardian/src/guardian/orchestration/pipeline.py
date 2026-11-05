@@ -295,6 +295,8 @@ class GuardianPipeline:
                 allowed_types=self.security.settings.allowed_types,
             )
             canonical_envelope = envelope.model_dump(exclude_none=True)
+            if isinstance(admitted.body.get("schema_id"), str):
+                canonical_envelope["schema_id"] = admitted.body["schema_id"]
             if not isinstance(self.contract, GenericMapper):
                 raise RuntimeError("Production pipeline requires GenericMapper")
             selected_record = None
@@ -470,6 +472,7 @@ class GuardianPipeline:
         if hasattr(self.store, "record_verdict"):
             self.store.record_verdict(event_id, verdict_record)
         log_event(logger, event_id, "TRUST_ASSESSMENT", verdict, final_reason, action=action, anomaly_flags=flags)
+        log_event(logger, event_id, "GUARDIAN_VERDICT", verdict, final_reason, action=action, anomaly_flags=flags)
         result_payload = {**canonical_msg, "event_id": event_id, "trust_verdict": verdict,
                           "reason": final_reason, "containment_action": action}
         if action != "ISOLATE" and not self.forward_to_brain:

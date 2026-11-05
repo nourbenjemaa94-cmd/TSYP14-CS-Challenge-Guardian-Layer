@@ -1,0 +1,34 @@
+scenario=onboarding
+started_at=2026-11-05T06:57:49.091Z
+count=21
+last_actual=ACCEPTED
+last_http_status=200
+seconds_to_profile_probation=0.014
+seconds_to_profile_active=10.343
+
+2026-11-05 07:57:38,193 [INFO] [guardian.main] [ONBOARDING] {'timestamp': '2026-11-05T06:57:38.193219+00:00', 'event': 'SCHEMA_UNKNOWN', 'fingerprint': '9438789bc480f0e5'}
+2026-11-05 07:57:38,199 [INFO] [guardian.main] [ONBOARDING] {'timestamp': '2026-11-05T06:57:38.199643+00:00', 'event': 'ONBOARDING_STARTED', 'fingerprint': '9438789bc480f0e5'}
+2026-11-05 07:57:38,205 [INFO] [guardian.main] [ONBOARDING] {'timestamp': '2026-11-05T06:57:38.205629+00:00', 'event': 'PROFILE_PROPOSED', 'fingerprint': '9438789bc480f0e5', 'proposers_agreed': ['heuristic']}
+2026-11-05 07:57:38,206 [INFO] [guardian.main] [ONBOARDING] {'timestamp': '2026-11-05T06:57:38.206989+00:00', 'event': 'PROFILE_PROBATION', 'fingerprint': '9438789bc480f0e5', 'consensus': 'degraded'}
+2026-11-05 07:57:38,207 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:38.207987+00:00', 'event_id': 'evt-twin-alt-1', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:38,751 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:38.751301+00:00', 'event_id': 'evt-twin-alt-2', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:39,292 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:39.292716+00:00', 'event_id': 'evt-twin-alt-3', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:39,855 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:39.855446+00:00', 'event_id': 'evt-twin-alt-4', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:40,402 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:40.402211+00:00', 'event_id': 'evt-twin-alt-5', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:40,932 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:40.932627+00:00', 'event_id': 'evt-twin-alt-6', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:41,472 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:41.472058+00:00', 'event_id': 'evt-twin-alt-7', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:41,999 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:41.999083+00:00', 'event_id': 'evt-twin-alt-8', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:42,532 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:42.532169+00:00', 'event_id': 'evt-twin-alt-9', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:43,062 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:43.062331+00:00', 'event_id': 'evt-twin-alt-10', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:43,603 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:43.603233+00:00', 'event_id': 'evt-twin-alt-11', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:44,162 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:44.162152+00:00', 'event_id': 'evt-twin-alt-12', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:44,706 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:44.706770+00:00', 'event_id': 'evt-twin-alt-13', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:45,249 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:45.249419+00:00', 'event_id': 'evt-twin-alt-14', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:45,793 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:45.793331+00:00', 'event_id': 'evt-twin-alt-15', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:46,338 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:46.338789+00:00', 'event_id': 'evt-twin-alt-16', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:46,879 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:46.879786+00:00', 'event_id': 'evt-twin-alt-17', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:47,444 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:47.444609+00:00', 'event_id': 'evt-twin-alt-18', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:47,978 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:47.978823+00:00', 'event_id': 'evt-twin-alt-19', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:48,532 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:48.532432+00:00', 'event_id': 'evt-twin-alt-20', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}
+2026-11-05 07:57:48,536 [INFO] [guardian.main] [ONBOARDING] {'timestamp': '2026-11-05T06:57:48.536447+00:00', 'event': 'PROFILE_ACTIVE', 'fingerprint': '9438789bc480f0e5'}
+2026-11-05 07:57:49,072 [INFO] [guardian.main] [AUDIT] {'timestamp': '2026-11-05T06:57:49.072144+00:00', 'event_id': 'evt-twin-alt-21', 'stage': 'GUARDIAN_VERDICT', 'verdict': 'TRUSTED', 'reason': 'NORMAL', 'action': 'ALLOW', 'anomaly_flags': []}

@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -66,10 +67,14 @@ def execute(
     burst: int,
     flood_threshold: int,
     path: str = READING_PATH,
+    count: int = 1,
+    interval_seconds: float = 0.0,
 ) -> dict[str, Any]:
     """Send one scenario and return the expected code, the actual code, and the log path."""
     if mode not in EXPECTED:
         raise SystemExit(f"Unknown mode {mode!r}. Choose one of: {', '.join(MODES)}.")
+    if count < 1:
+        raise SystemExit("--count must be at least 1")
     status, body, event_id = _run_mode(
         mode,
         post=post,
@@ -79,8 +84,10 @@ def execute(
         now=now,
         burst=burst,
         flood_threshold=flood_threshold,
+        count=count,
+        interval_seconds=interval_seconds,
     )
-    expected = EXPECTED[mode]
+    expected = "ACCEPTED" if count > 1 else EXPECTED[mode]
     actual = actual_code(status, body)
     fields = {
         "scenario": mode,
@@ -112,9 +119,13 @@ def _run_mode(
     now: datetime,
     burst: int,
     flood_threshold: int,
+    count: int = 1,
+    interval_seconds: float = 0.0,
 ) -> tuple[int, dict[str, Any], str]:
     if mode == "flood":
         return _flood(post, path, twin_key, now, burst, flood_threshold)
+    if count > 1:
+        return _repeat(mode, post, path, twin_key, brain_key, now, count, interval_seconds)
     if mode == "replay":
         payload, event_id = _signed_reading(twin_key, now, seq=1, event_id="evt-replay")
         post(path, payload)
@@ -148,6 +159,49 @@ def _run_mode(
         parsed["payload"]["value"] = 999
         payload = json.dumps(parsed).encode("utf-8")
     status, body = post(path, payload)
+    return status, body, event_id
+
+
+def _repeat(
+    mode: str,
+    post: Poster,
+    path: str,
+    twin_key: str,
+    brain_key: str,
+    now: datetime,
+    count: int,
+    interval_seconds: float,
+) -> tuple[int, dict[str, Any], str]:
+    """Send the same shape ``count`` times with unique event ids."""
+    status, body, event_id = 0, {}, f"evt-{mode}-0"
+    for index in range(count):
+        if index and interval_seconds > 0:
+            time.sleep(interval_seconds)
+        timestamp = format_timestamp(datetime.now().astimezone())
+        layer = "rogue" if mode == "unknown-layer" else "twin"
+        key = brain_key if mode == "wrong-key" else twin_key
+        message_type = "sensor_reading"
+        message_payload = {"metric": "water_level", "value": 180, "unit": "cm"}
+        if mode == "twin-alt":
+            message_type = "water_reading"
+            message_payload = dict(TWIN_ALT_PAYLOAD)
+            message_payload["levelOfWater"] = 1.8 + (index * 0.02)
+        payload, event_id = _signed_reading(
+            key,
+            now,
+            seq=index + 1,
+            event_id=f"evt-{mode}-{index + 1}",
+            layer=layer,
+            timestamp=timestamp,
+            sign=mode != "unsigned",
+            message_type=message_type,
+            message_payload=message_payload,
+        )
+        if mode == "tampered":
+            parsed = json.loads(payload)
+            parsed["payload"]["value"] = 999
+            payload = json.dumps(parsed).encode("utf-8")
+        status, body = post(path, payload)
     return status, body, event_id
 
 
@@ -224,6 +278,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", required=True, choices=MODES)
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--log-dir", default=None)
+    parser.add_argument("--count", type=int, default=1)
+    parser.add_argument("--interval", type=float, default=0.5)
     args = parser.parse_args(argv)
     try:
         security = Settings.load().security
@@ -248,6 +304,8 @@ def main(argv: list[str] | None = None) -> int:
         log_dir=Path(args.log_dir) if args.log_dir else ROOT / "logs",
         burst=security.rate_burst,
         flood_threshold=security.flood_threshold,
+        count=args.count,
+        interval_seconds=args.interval if args.count > 1 else 0.0,
     )
     print(f"expected={result['expected']} actual={result['actual']}")
     print(f"log={result['log_path']}")

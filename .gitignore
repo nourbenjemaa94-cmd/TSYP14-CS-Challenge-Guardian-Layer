@@ -24,3 +24,6 @@ data/
 *.gguf
 .ollama/
 guardian/logs/*.tmp
+guardian/logs/*.log
+guardian/logs/onboarding-uvicorn*
+!guardian/logs/onboarding-20*.log

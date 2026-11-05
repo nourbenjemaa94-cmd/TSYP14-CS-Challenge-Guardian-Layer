@@ -274,6 +274,15 @@ class ProfileRegistry:
                 statuses=("PROBATION",),
             )
         if record is None:
+            probation = [
+                item for item in self._records.values()
+                if item.status == "PROBATION"
+                and item.profile is not None
+                and item.twin_identity == twin_identity
+                and item.event_type == event_type
+            ]
+            if len(probation) == 1:
+                return probation[0]
             raise MappingError(
                 MappingErrorCode.UNKNOWN_SCHEMA,
                 "no active compatible profile",
