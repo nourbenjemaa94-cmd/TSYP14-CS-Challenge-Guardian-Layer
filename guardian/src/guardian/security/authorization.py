@@ -11,11 +11,11 @@ from collections.abc import Mapping
 from guardian.security.errors import ReasonCode, SecurityRejection
 
 # Inbound operations each caller may perform. Guardian signs outbound messages
-# and accepts none inbound. Unknown layers and unknown operations are denied.
+# and the signed operator reset. Unknown layers and unknown operations are denied.
 DEFAULT_POLICY: dict[str, frozenset[str]] = {
     "twin": frozenset({"publish_reading", "report_actuator_state", "ack_command"}),
     "brain": frozenset({"request_verdict", "get_device_status", "report_decision"}),
-    "guardian": frozenset(),
+    "guardian": frozenset({"reset_profile"}),
 }
 
 

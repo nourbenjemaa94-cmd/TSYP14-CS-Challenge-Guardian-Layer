@@ -22,9 +22,11 @@ from fastapi.responses import JSONResponse
 
 from guardian.adapters.communication.brain import RestBrainOutputAdapter
 from guardian.adapters.communication.manager import AdapterManager, AsyncPipelineHandler
-from guardian.adapters.contract.errors import MappingError
+from guardian.adapters.contract.errors import MappingError, MappingErrorCode
 from guardian.adapters.contract.mapper import GenericMapper
+from guardian.adapters.contract.onboarding import OnboardingManager
 from guardian.adapters.contract.production import production_profiles
+from guardian.adapters.contract.proposers import HeuristicProposer
 from guardian.adapters.contract.registry import ProfileRegistry
 from guardian.audit.event_store import default_event_store
 from guardian.audit.logger import get_audit_logger, log_event
@@ -281,7 +283,39 @@ def _default_pipeline() -> GuardianPipeline:
             profile_registry=profile_registry,
             forward_to_brain=loaded.partners.brain.forward,
         )
+        onboarding = OnboardingManager(
+            profile_registry,
+            [HeuristicProposer()],
+            loaded.contract,
+            logger,
+        )
+
+        async def _drain(envelope: dict[str, Any], profile: Any) -> Any:
+            return await _pipeline.process_mapped(envelope, profile, logger)
+
+        onboarding.process_mapped = _drain
+        _pipeline.onboarding = onboarding
     return _pipeline
+
+
+@app.post("/api/v1/profiles/{fingerprint}/reset")
+async def reset_profile(fingerprint: str, request: Request):
+    """Signed operator reset: drop an UNMAPPABLE record (guardian layer only)."""
+    try:
+        pipeline = _default_pipeline()
+        raw = await request.body()
+        pipeline.security.admit(raw, "reset_profile")
+        manager = pipeline.onboarding
+        if manager is None:
+            raise MappingError(MappingErrorCode.UNKNOWN_SCHEMA, "onboarding is not configured")
+        manager.reset(fingerprint)
+        return {"status": "RESET", "fingerprint": fingerprint}
+    except SecurityRejection as exc:
+        return _security_rejection_response(exc, action="reset_profile")
+    except MappingError as exc:
+        return JSONResponse(status_code=exc.http_status, content=exc.to_public_dict())
+    except SecurityConfigurationError as exc:
+        return JSONResponse(status_code=503, content={"error": "PIPELINE_NOT_CONFIGURED", "message": str(exc)})
 
 
 @app.get("/api/v1/verdicts/{event_id}")

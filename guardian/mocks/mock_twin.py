@@ -51,7 +51,7 @@ EXPECTED = {
     "stale": "STALE_TIMESTAMP",
     "future": "FUTURE_TIMESTAMP",
     "flood": "RATE_LIMITED",
-    "twin-alt": "UNKNOWN_SCHEMA",
+    "twin-alt": "ONBOARDING_PENDING",
 }
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -364,8 +365,43 @@ def test_unknown_schema_is_publicly_rejected(http_client: TestClient) -> None:
         http_client,
         envelope(message_type="future_partner_schema", seq=80),
     )
-    assert response.status_code == 422
-    assert response.json()["error"] == MappingErrorCode.UNKNOWN_SCHEMA.value
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "ONBOARDING_PENDING"
+    assert body["error"] == MappingErrorCode.ONBOARDING_PENDING.value
+    assert body["fingerprint"]
+
+
+def test_guardian_can_reset_unmappable_profile(http_client: TestClient) -> None:
+    pending = post_signed(
+        http_client,
+        envelope(message_type="future_partner_schema", seq=81),
+    )
+    fingerprint = pending.json()["fingerprint"]
+    pipeline = main._pipeline
+    assert pipeline is not None and pipeline.onboarding is not None
+    record = None
+    for _ in range(50):
+        record = pipeline.onboarding.registry.get(fingerprint)
+        if record is not None and record.status == "UNMAPPABLE":
+            break
+        time.sleep(0.02)
+    else:
+        pytest.fail("onboarding did not mark the unknown shape UNMAPPABLE")
+
+    twin_reset = http_client.post(
+        f"/api/v1/profiles/{fingerprint}/reset",
+        content=json.dumps(envelope(message_type="profile_reset", seq=82)).encode(),
+    )
+    assert twin_reset.status_code == 403
+
+    reset = http_client.post(
+        f"/api/v1/profiles/{fingerprint}/reset",
+        content=json.dumps(envelope(source="guardian", message_type="profile_reset", seq=83)).encode(),
+    )
+    assert reset.status_code == 200
+    assert reset.json() == {"status": "RESET", "fingerprint": fingerprint}
+    assert pipeline.onboarding.registry.get(fingerprint) is None
 
 
 def _cors_app() -> FastAPI:

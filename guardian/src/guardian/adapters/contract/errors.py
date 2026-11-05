@@ -12,6 +12,7 @@ from enum import StrEnum
 
 class MappingErrorCode(StrEnum):
     UNKNOWN_SCHEMA = "UNKNOWN_SCHEMA"
+    ONBOARDING_PENDING = "ONBOARDING_PENDING"
     UNMAPPABLE_SCHEMA = "UNMAPPABLE_SCHEMA"
     PROFILE_NOT_ACTIVE = "PROFILE_NOT_ACTIVE"
     INVALID_PROFILE = "INVALID_PROFILE"
@@ -23,6 +24,7 @@ class MappingErrorCode(StrEnum):
 
 PUBLIC_MESSAGES: dict[MappingErrorCode, str] = {
     MappingErrorCode.UNKNOWN_SCHEMA: "No mapping profile is known for this message format.",
+    MappingErrorCode.ONBOARDING_PENDING: "This message format is being onboarded.",
     MappingErrorCode.UNMAPPABLE_SCHEMA: "This message format could not be mapped automatically.",
     MappingErrorCode.PROFILE_NOT_ACTIVE: "The mapping profile for this message format is not active.",
     MappingErrorCode.INVALID_PROFILE: "The mapping profile is not valid.",
@@ -34,6 +36,7 @@ PUBLIC_MESSAGES: dict[MappingErrorCode, str] = {
 
 HTTP_STATUS: dict[MappingErrorCode, int] = {
     MappingErrorCode.UNKNOWN_SCHEMA: 422,
+    MappingErrorCode.ONBOARDING_PENDING: 202,
     MappingErrorCode.UNMAPPABLE_SCHEMA: 422,
     MappingErrorCode.PROFILE_NOT_ACTIVE: 503,
     MappingErrorCode.INVALID_PROFILE: 500,
@@ -54,10 +57,12 @@ class MappingError(Exception):
         *,
         path: str | None = None,
         event_id: str | None = None,
+        fingerprint: str | None = None,
     ) -> None:
         self.code = code
         self.path = path
         self.event_id = event_id
+        self.fingerprint = fingerprint
         self.public_message = PUBLIC_MESSAGES[code]
         self.http_status = HTTP_STATUS[code]
         self.detail = detail or self.public_message
@@ -65,7 +70,18 @@ class MappingError(Exception):
 
     def to_public_dict(self) -> dict[str, object]:
         """Shape shared with ``SecurityRejection.to_public_dict``; safe for partners."""
-        body: dict[str, object] = {"error": self.code.value, "message": self.public_message}
+        if self.code is MappingErrorCode.ONBOARDING_PENDING:
+            body: dict[str, object] = {
+                "status": "ONBOARDING_PENDING",
+                "error": self.code.value,
+                "message": self.public_message,
+            }
+            if self.fingerprint is not None:
+                body["fingerprint"] = self.fingerprint
+            if self.event_id is not None:
+                body["event_id"] = self.event_id
+            return body
+        body = {"error": self.code.value, "message": self.public_message}
         if self.event_id is not None:
             body["event_id"] = self.event_id
         if self.path is not None:

@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .errors import MappingError, MappingErrorCode
 from .profile import MappingProfile, load_profile
 
-ProfileStatus = Literal["PENDING", "ACTIVE", "REVOKED", "UNMAPPABLE"]
+ProfileStatus = Literal["PENDING", "PROBATION", "ACTIVE", "REVOKED", "UNMAPPABLE"]
 
 
 class ProfileRecord(BaseModel):
@@ -47,6 +47,24 @@ class ProfileRecord(BaseModel):
     @property
     def version(self) -> str:
         return self.profile.version if self.profile is not None else ""
+
+
+def shape_fingerprint(
+    *,
+    twin_identity: str,
+    event_type: str,
+    schema_id: str | None,
+    payload_keys: list[str],
+) -> str:
+    """Identify an unknown payload shape before a profile exists. Never hashes values."""
+    payload = {
+        "twin_identity": twin_identity,
+        "event_type": event_type,
+        "schema_id": schema_id or "",
+        "keys": sorted(payload_keys),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:16]
 
 
 def profile_fingerprint(profile: MappingProfile, twin_identity: str, event_type: str) -> str:

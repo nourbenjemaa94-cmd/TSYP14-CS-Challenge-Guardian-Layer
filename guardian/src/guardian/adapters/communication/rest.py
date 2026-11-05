@@ -118,9 +118,19 @@ class RestAdapter:
         except ValueError:
             mapping_code = None
         if mapping_code is not None:
+            extra = result.response if isinstance(result.response, dict) else {}
+            fingerprint = extra.get("fingerprint") if isinstance(extra.get("fingerprint"), str) else None
+            event_id = extra.get("event_id") if isinstance(extra.get("event_id"), str) else None
+            path = extra.get("path") if isinstance(extra.get("path"), str) else None
+            rejection = MappingError(
+                mapping_code,
+                fingerprint=fingerprint,
+                event_id=event_id,
+                path=path,
+            )
             return JSONResponse(
-                status_code=MappingError(mapping_code).http_status,
-                content=MappingError(mapping_code).to_public_dict(),
+                status_code=rejection.http_status,
+                content=rejection.to_public_dict(),
             )
 
         if result.code == "PIPELINE_NOT_CONFIGURED":

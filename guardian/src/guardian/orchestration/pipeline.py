@@ -91,6 +91,7 @@ class GuardianPipeline:
         mapping_profiles: dict[str, Any] | None = None,
         profile_registry: ProfileRegistry | None = None,
         forward_to_brain: bool = True,
+        onboarding: Any | None = None,
     ):
         self.security = security
         self.contract = contract
@@ -107,6 +108,7 @@ class GuardianPipeline:
         self.mapping_profile = mapping_profile
         self.mapping_profiles = mapping_profiles or {}
         self.profile_registry = profile_registry
+        self.onboarding = onboarding
         self.timeline = timeline_manager
         self._confirmed_isolations: set[str] = set()
 
@@ -296,21 +298,34 @@ class GuardianPipeline:
             if not isinstance(self.contract, GenericMapper):
                 raise RuntimeError("Production pipeline requires GenericMapper")
             if self.profile_registry is not None:
-                profile = self.profile_registry.select(
-                    twin_identity=admitted.partner_identity,
-                    event_type=canonical_envelope.get("type", ""),
-                    schema_id=(
-                        admitted.body.get("schema_id")
-                        if isinstance(admitted.body.get("schema_id"), str)
-                        else None
-                    ),
-                    schema_version=(
-                        admitted.body.get("schema_version")
-                        if isinstance(admitted.body.get("schema_version"), str)
-                        else None
-                    ),
-                    event_id=canonical_envelope.get("event_id"),
-                )
+                try:
+                    profile = self.profile_registry.select(
+                        twin_identity=admitted.partner_identity,
+                        event_type=canonical_envelope.get("type", ""),
+                        schema_id=(
+                            admitted.body.get("schema_id")
+                            if isinstance(admitted.body.get("schema_id"), str)
+                            else None
+                        ),
+                        schema_version=(
+                            admitted.body.get("schema_version")
+                            if isinstance(admitted.body.get("schema_version"), str)
+                            else None
+                        ),
+                        event_id=canonical_envelope.get("event_id"),
+                    )
+                except MappingError as exc:
+                    if exc.code is MappingErrorCode.UNKNOWN_SCHEMA and self.onboarding is not None:
+                        fingerprint = self.onboarding.submit(
+                            canonical_envelope,
+                            twin_identity=admitted.partner_identity,
+                        )
+                        raise MappingError(
+                            MappingErrorCode.ONBOARDING_PENDING,
+                            event_id=canonical_envelope.get("event_id"),
+                            fingerprint=fingerprint,
+                        ) from exc
+                    raise
             else:
                 profile = (
                     self.mapping_profiles.get(canonical_envelope.get("type"))
@@ -318,6 +333,16 @@ class GuardianPipeline:
                     else self.mapping_profile
                 )
             if profile is None:
+                if self.onboarding is not None:
+                    fingerprint = self.onboarding.submit(
+                        canonical_envelope,
+                        twin_identity=admitted.partner_identity,
+                    )
+                    raise MappingError(
+                        MappingErrorCode.ONBOARDING_PENDING,
+                        event_id=canonical_envelope.get("event_id"),
+                        fingerprint=fingerprint,
+                    )
                 raise MappingError(
                     MappingErrorCode.UNKNOWN_SCHEMA,
                     event_id=canonical_envelope.get("event_id"),
@@ -557,4 +582,18 @@ class GuardianPipeline:
                     },
                 })
         return final_status
+
+    async def process_mapped(self, envelope: dict[str, Any], profile: Any, logger: Any = None) -> dict[str, Any]:
+        """Replay a buffered envelope through map + core after onboarding succeeds."""
+        if not isinstance(self.contract, GenericMapper):
+            raise RuntimeError("Production pipeline requires GenericMapper")
+        events = self.contract.map_message(envelope, profile, "onboarding")
+        if not events:
+            raise MappingError(MappingErrorCode.UNMAPPABLE_SCHEMA, event_id=envelope.get("event_id"))
+        results = [
+            await self._process_canonical(event.to_sensor_event().to_core_dict(), logger, event.event_id)
+            for event in events
+            if event.kind == "measurement"
+        ]
+        return results[0] if results else {"status": "SKIPPED"}
 

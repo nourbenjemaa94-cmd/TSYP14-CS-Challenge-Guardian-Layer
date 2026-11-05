@@ -40,6 +40,15 @@ def log_event(
     return entry
 
 
+def log_onboarding(logger: Any, event: str, fingerprint: str, **fields: Any) -> dict[str, Any]:
+    """Onboarding audit line. Callers must not pass payload values or secrets."""
+    # TODO(guardian-integration): onboarding events ride the existing audit logger.
+    entry = {"timestamp": get_utc_now(), "event": event, "fingerprint": fingerprint, **fields}
+    if logger and hasattr(logger, "info"):
+        logger.info("[ONBOARDING] %s", entry)
+    return entry
+
+
 def get_audit_logger(name: str = "guardian.audit") -> logging.Logger:
     """Configures and returns a structured logger."""
     audit_logger = logging.getLogger(name)
